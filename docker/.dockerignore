@@ -1,0 +1,25 @@
+# Exclude Snakemake run artifacts
+.snakemake/
+
+# Exclude Python cache
+scripts/__pycache__/
+**/*.pyc
+
+# Exclude backup files
+*_backup*
+Snakefile_backup
+
+# Exclude test outputs
+test_*/
+test_data/
+
+# Exclude assets_backup (raw source files used to build indices)
+assets_backup/
+
+# Not needed in the image
+tests/
+**/__pycache__
+*.bak
+
+# References come from the staging folder (--build-context references=...), not from here
+assets/

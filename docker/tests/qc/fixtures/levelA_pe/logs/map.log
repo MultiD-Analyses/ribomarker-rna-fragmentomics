@@ -1,0 +1,27 @@
+###
+module: mapReads
+date: 2026-10-05 10:33:29
+sample_input:
+S1: results/levelA_pe/trimmed/S1.merged.fq.gz
+S2: results/levelA_pe/trimmed/S2.merged.fq.gz
+S3: results/levelA_pe/trimmed/S3.merged.fq.gz
+databases:
+bowtie: /repo/test/levels/work/assets_a/univec/univec_bt1 T
+ribospikebt2: /repo/test/levels/work/assets_a/ribospike/ribospike T
+bowtie: /repo/test/levels/work/assets_a/rrna/human-rrna_bt1 T
+bowtie2: /repo/test/levels/work/assets_a/trna/human-trnas T
+bowtie2: /repo/test/levels/work/assets_a/mirna/human-mirna T
+bowtie2: /repo/test/levels/work/assets_a/mirna/human-star T
+bowtie2: /repo/test/levels/work/assets_a/mirna/human-pre T
+bowtie2: /repo/test/levels/work/assets_a/pirna/human-pirna T
+bowtie2: /repo/test/levels/work/assets_a/gtf/human-ncrna T
+bowtie2: /repo/test/levels/work/assets_a/gtf/human-cdna T
+bowtie2: /repo/test/levels/work/assets_a/genome/human-genome T
+threads: 8
+output: results/levelA_pe/alignments
+tools: ['bowtie=1.0.0', 'bowtie2=2.5.5', 'samtools=1.23.1']
+commands:
+bowtie : zcat -f {fastq_file} | bowtie -S -k 1 -n 1 -l 18 -e 80 --chunkmbs 256 -p {threads} --un {outprefix}/alignments/unal/{sample}.{dbprefix}.fq {genome} - {outprefix}/alignments/{sample}.{dbprefix}.sam 2> {outprefix}/alignments/logs/{sample}.{dbprefix}.log
+ribospikebt2 : bowtie2 --sam-no-qname-trunc --no-unal --no-1mm-upfront --mp 6 --rdg 6,3 --rfg 6,3 --norc --n-ceil L,5,0.15 -k 1 -D 20 -R 2 -N 0 -L 10 -i S,1,0.40 --score-min L,0,-0.6 --np 1 --ignore-quals --threads {threads} --un-gz {outprefix}/alignments/unal/{sample}.{dbprefix}.fq.gz -x {genome} -U {fastq_file} -S {outprefix}/alignments/{sample}.{dbprefix}.sam 2> {outprefix}/alignments/logs/{sample}.{dbprefix}.log
+bowtie2 : bowtie2 --sam-no-qname-trunc --no-unal --np 5 --very-sensitive --ignore-quals --threads {threads} --un-gz {outprefix}/alignments/unal/{sample}.{dbprefix}.fq.gz -x {genome} -k {multimap} -U {fastq_file} -S {outprefix}/alignments/{sample}.{dbprefix}.sam 2> {outprefix}/alignments/logs/{sample}.{dbprefix}.log
+###

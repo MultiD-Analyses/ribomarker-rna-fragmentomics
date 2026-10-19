@@ -1,0 +1,9 @@
+# Text files keep LF in every checkout, also with Git for Windows (core.autocrlf true): the scripts,
+# VERSION and the Dockerfile run in Linux and Docker. Binary files are detected and left alone.
+* text=auto eol=lf
+# Line endings of the starter scripts: bash needs LF, the Windows command file CRLF,
+# whatever the checkout settings of the computer are.
+ribomarker text eol=lf
+ribomarker.cmd text eol=crlf
+# All shell scripts need LF, whatever the checkout settings (bash fails on CRLF: 'set: pipefail' error)
+*.sh text eol=lf

@@ -1,0 +1,505 @@
+{
+  "build": "v1",
+  "builder_script": "buildDB_v1.py",
+  "builder_sha256": "1fc0dee301f673be62e570e3cda7ad15356d8ab06108b8398d2a13def57cc908",
+  "builder_core_sha256": "208b0b19898fd8537d812bba7a05bc04c681cfd0fc47d3ec727be08e1784d666",
+  "species": "mouse",
+  "built_utc": "2026-10-08T15:48:57Z",
+  "tools": {
+    "python": "3.13.13",
+    "bowtie-build": "bowtie-build version 1.0.0",
+    "bowtie2-build": "bowtie2-build-s version 2.5.5"
+  },
+  "sources": {
+    "genome": {
+      "url": "https://ftp.ensembl.org/pub/release-116/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz",
+      "version": "Ensembl release-116 / GRCm39",
+      "local_file": "genome",
+      "downloaded_utc": "2026-10-08T15:51:58Z",
+      "download_bytes": 862438316,
+      "sha256": "0669729d327686f94cd659ec1b96bf7c31954c9771b8a7d0bc5ff245d105c2bd"
+    },
+    "gtf": {
+      "url": "https://ftp.ensembl.org/pub/release-116/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz",
+      "version": "Ensembl release-116 / GRCm39",
+      "local_file": "gtf.gz",
+      "downloaded_utc": "2026-10-08T15:53:45Z",
+      "download_bytes": 107856522,
+      "sha256": "5c29fd9e3157cf40fdbbf76ab25bfe7f79aa61313e0b672664ddb0cb251c02e1"
+    },
+    "trna": {
+      "url": "https://gtrnadb.ucsc.edu/GtRNAdb2/genomes/eukaryota/Mmusc39/mm39-tRNAs.tar.gz",
+      "version": "GtRNAdb2 mm39",
+      "local_file": "trna.tar.gz",
+      "downloaded_utc": "2026-10-08T15:53:48Z",
+      "download_bytes": 5106712,
+      "sha256": "fbcc8b2dd8a12455331ac0b5bd4ed65519f15a5fe5baac4325da86861ee56447"
+    },
+    "mirna": {
+      "url": "https://mirgenedb.org/fasta/mmu?all=1",
+      "version": "MirGeneDB 3.0",
+      "local_file": "mirna.dat",
+      "downloaded_utc": "2026-10-08T15:53:49Z",
+      "download_bytes": 138794,
+      "sha256": "57855e35a404a7badb364925f552cbd000d314604d6de2cf82f9f6d3b14c2c18"
+    },
+    "pirna": {
+      "url": "http://bigdata.ibp.ac.cn/piRBase/download/v3.0/fasta/mmu.gold.fa.gz",
+      "version": "piRBase v3.0 (gold)",
+      "local_file": "pirna",
+      "downloaded_utc": "2026-10-08T15:54:03Z",
+      "download_bytes": 1007007,
+      "sha256": "459f2228fd62f15461e49257da2274a8255f9b7e4825833c76e02b47fbf413b8",
+      "upstream_md5": "75bf0f25717331bfa22e8149731b5647"
+    },
+    "rrna": {
+      "url": "https://raw.githubusercontent.com/friedlanderlab/mirtrace/master/src/lib/inputs/rRNA_reference.fa",
+      "version": "mirtrace rRNA_reference.fa (branch: master)",
+      "local_file": "rrna.dat",
+      "downloaded_utc": "2026-10-08T15:54:04Z",
+      "download_bytes": 9472176,
+      "sha256": "4cb69b85228bab1bb68a8332cb2308478aa41c0637495cd8a89efe3b6db64d00"
+    },
+    "univec": {
+      "url": "https://ftp.ncbi.nlm.nih.gov/pub/UniVec/UniVec",
+      "version": "NCBI UniVec (current build)",
+      "local_file": "univec.dat",
+      "downloaded_utc": "2026-10-08T15:54:06Z",
+      "download_bytes": 1703918,
+      "sha256": "2fb50fd9749e3c31b77107e902ba81eed87a55fd2f32b99a708a6172d168a1c9"
+    }
+  },
+  "inputs": {
+    "ribospike": {
+      "source_path": "buildDB/inputs/ribospike.fa",
+      "sha256": "25143e9dde9febacdfb1a8ceef9d1221300534ec633cdfa50790be30631337c3"
+    }
+  },
+  "outputs": {
+    "dbpaths": {
+      "file": "mouse.dbpaths.csv",
+      "bytes": 308,
+      "sha256": "b6c5f9b5315d8b38a4abf989b3621c95b5c794da0eac93ac4dda68da68463acd"
+    },
+    "bed": {
+      "file": "mouse.bed",
+      "bytes": 8131625,
+      "sha256": "bfef331d5c039b4a7a12d5f794b6bc6e54540ef4a526b54b300378bb011c0168"
+    },
+    "indices": [
+      {
+        "map_cmd": "bowtie",
+        "path": "univec/univec_bt1",
+        "retain": "T",
+        "files": [
+          {
+            "file": "univec/univec_bt1.1.ebwt",
+            "bytes": 5060217,
+            "sha256": "ce438176ae3aeaa0453d3d28f0a7f273d7bd7f3624f890546f595390d36e7822"
+          },
+          {
+            "file": "univec/univec_bt1.2.ebwt",
+            "bytes": 157376,
+            "sha256": "ff2519e1c9d562cb33f7b96fcc238eab01b5e6d1179b4d9c9b7a7d270461d928"
+          },
+          {
+            "file": "univec/univec_bt1.3.ebwt",
+            "bytes": 56663,
+            "sha256": "6c68f9159e43d13db15d0e785bc7341bbfce3daa12c2a9af7dae263d7f983b7a"
+          },
+          {
+            "file": "univec/univec_bt1.4.ebwt",
+            "bytes": 314742,
+            "sha256": "66b9ec313beed494b43f60b59f5c6a727755dcc01013d511845340ee03d855f9"
+          },
+          {
+            "file": "univec/univec_bt1.rev.1.ebwt",
+            "bytes": 5060217,
+            "sha256": "0b102def640e1b3687f7fafa5102d05579b219c5bda073ab13e024e01ac4a70a"
+          },
+          {
+            "file": "univec/univec_bt1.rev.2.ebwt",
+            "bytes": 157376,
+            "sha256": "835d48dda37b8aba3c47269fe928701f59f87ebda286d64fe9809a70507aaeb6"
+          }
+        ]
+      },
+      {
+        "map_cmd": "ribospikebt2",
+        "path": "ribospike/ribospike",
+        "retain": "T",
+        "files": [
+          {
+            "file": "ribospike/ribospike.1.bt2",
+            "bytes": 4195265,
+            "sha256": "cb27f951f3a88462e420f9f1fca6a9f5fa49227de21573e2855e6f52cfcc95de"
+          },
+          {
+            "file": "ribospike/ribospike.2.bt2",
+            "bytes": 168,
+            "sha256": "21c2831b85d6066cf9c1eb71f5e155ab0f3b5f8eec0b73c575e6e357a9ef24f9"
+          },
+          {
+            "file": "ribospike/ribospike.3.bt2",
+            "bytes": 368,
+            "sha256": "a0f375d91b49ebb9ca7e2a924393cca5c712bb4311fc736e1f3307e600b12155"
+          },
+          {
+            "file": "ribospike/ribospike.4.bt2",
+            "bytes": 160,
+            "sha256": "e6c13b5a756702d9acca8c7b1957dabc698059ed6f1e376ec712911a7d702a14"
+          },
+          {
+            "file": "ribospike/ribospike.rev.1.bt2",
+            "bytes": 4195265,
+            "sha256": "14d244857687ecf462419415c076dbe51e5a3fd857e6574ce74708d1d6dc7d61"
+          },
+          {
+            "file": "ribospike/ribospike.rev.2.bt2",
+            "bytes": 168,
+            "sha256": "075e34a1d943fec91f54e3205b5fd360006d01e9a027089b25006ec3db0b0ead"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie",
+        "path": "rrna/mouse-rrna_bt1",
+        "retain": "T",
+        "files": [
+          {
+            "file": "rrna/mouse-rrna_bt1.1.ebwt",
+            "bytes": 4205931,
+            "sha256": "6e3c610624fdaf0d40a3284d8539809201ab4379faa308b383782fa1413512f4"
+          },
+          {
+            "file": "rrna/mouse-rrna_bt1.2.ebwt",
+            "bytes": 4404,
+            "sha256": "f38fc8a97342bf24448e9d6b70499347863c362083e98d07d2102310df42d6b9"
+          },
+          {
+            "file": "rrna/mouse-rrna_bt1.3.ebwt",
+            "bytes": 728,
+            "sha256": "beb4a77615f02f15aa281509dc13005a0fa357b6db40dc986f107d45886b771d"
+          },
+          {
+            "file": "rrna/mouse-rrna_bt1.4.ebwt",
+            "bytes": 8797,
+            "sha256": "9f69b0eee7a2dc2b1637f70eae6fa432739375ba8e6a9aa6283465984a060258"
+          },
+          {
+            "file": "rrna/mouse-rrna_bt1.rev.1.ebwt",
+            "bytes": 4205931,
+            "sha256": "2318613981541f30447f9ba145aeb1f238d9faf3ec10535ec8b3832a53b51229"
+          },
+          {
+            "file": "rrna/mouse-rrna_bt1.rev.2.ebwt",
+            "bytes": 4404,
+            "sha256": "83c67812516c832b51f867d4a3b2b31b2929f5cfa441a061e2d5c1e1b2314479"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "trna/mouse-trnas",
+        "retain": "T",
+        "files": [
+          {
+            "file": "trna/mouse-trnas.1.bt2",
+            "bytes": 4209757,
+            "sha256": "5f9793040a484221bcfe572175a9f04b8034d984b8128a8dd193a5d507e70fe3"
+          },
+          {
+            "file": "trna/mouse-trnas.2.bt2",
+            "bytes": 4276,
+            "sha256": "1f5604c224068fe6a35d5993438d16cee35819d054787d36acf07cd98279862a"
+          },
+          {
+            "file": "trna/mouse-trnas.3.bt2",
+            "bytes": 3932,
+            "sha256": "ca0b53e5c388a0b66356fc57f1392d3422e2081069adc450109f05527226f1c7"
+          },
+          {
+            "file": "trna/mouse-trnas.4.bt2",
+            "bytes": 4270,
+            "sha256": "d11f9b34705af8850c825a39ddfc59d037180ef7d50768ebe76195e41a0f2b0e"
+          },
+          {
+            "file": "trna/mouse-trnas.rev.1.bt2",
+            "bytes": 4209757,
+            "sha256": "b1be7da3666f67640533321cb5c0b0c1e5d0ff68a30162aa7d31cb6c957e2eb3"
+          },
+          {
+            "file": "trna/mouse-trnas.rev.2.bt2",
+            "bytes": 4276,
+            "sha256": "ebc4968474c40aefda5e825e75ed13996c4073bb3246f4a215100f0a353d5714"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "mirna/mouse-mirna",
+        "retain": "T",
+        "files": [
+          {
+            "file": "mirna/mouse-mirna.1.bt2",
+            "bytes": 4211668,
+            "sha256": "502537b193858c707bc28477cb57b0779e099ad90e67c902e2574ef3a28914ca"
+          },
+          {
+            "file": "mirna/mouse-mirna.2.bt2",
+            "bytes": 2284,
+            "sha256": "3b99253465a453b9378a64d2666fd7196c015b8262b4b5d4778086646f9b2811"
+          },
+          {
+            "file": "mirna/mouse-mirna.3.bt2",
+            "bytes": 7334,
+            "sha256": "b73fbc2121e32c5ee4205c851d4d762415ff490bc4f20fc2846716cd55450377"
+          },
+          {
+            "file": "mirna/mouse-mirna.4.bt2",
+            "bytes": 2277,
+            "sha256": "15fc1d7511b49887c413e61b6be8392ec06ba6f4a7938a977f08b0a9fe9db43c"
+          },
+          {
+            "file": "mirna/mouse-mirna.rev.1.bt2",
+            "bytes": 4211668,
+            "sha256": "43d103508f25cd4f12a35fa4ac4a9450a8e3ec842d26cd70148a4fc575f4b3cc"
+          },
+          {
+            "file": "mirna/mouse-mirna.rev.2.bt2",
+            "bytes": 2284,
+            "sha256": "3ecc953a80fff3d9f3be2f3fbd7e9763b27391a6f59ac940f9d36e145face19f"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "mirna/mouse-star",
+        "retain": "T",
+        "files": [
+          {
+            "file": "mirna/mouse-star.1.bt2",
+            "bytes": 4209626,
+            "sha256": "8290fdb6181bb5c46410438cbfc8fbd885f3f80f1f81b3365cd222336bc2606c"
+          },
+          {
+            "file": "mirna/mouse-star.2.bt2",
+            "bytes": 2012,
+            "sha256": "887d73641df4b7b2429b8926c140ed2a8eb9494aa23f712adc221cf6993d518c"
+          },
+          {
+            "file": "mirna/mouse-star.3.bt2",
+            "bytes": 6488,
+            "sha256": "173a7f4f68254bc41521614c7f1850ad804ae94ed4780af6ba0c10c80850e311"
+          },
+          {
+            "file": "mirna/mouse-star.4.bt2",
+            "bytes": 2005,
+            "sha256": "6d9bba0b8c98b422873f04a8b70d51c7ac3e128c722916f5299dd6ed0980a631"
+          },
+          {
+            "file": "mirna/mouse-star.rev.1.bt2",
+            "bytes": 4209626,
+            "sha256": "2aad686e008290e6a931016200ac5705d9c0b97d11e925fe75aa5759039f1756"
+          },
+          {
+            "file": "mirna/mouse-star.rev.2.bt2",
+            "bytes": 2012,
+            "sha256": "40eb9576ae48fca17adae76b2e92e0eafdfbc430ec20a943fc2bb9391d689dcd"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "mirna/mouse-pre",
+        "retain": "T",
+        "files": [
+          {
+            "file": "mirna/mouse-pre.1.bt2",
+            "bytes": 4216483,
+            "sha256": "26d47a83095f63dc981f543777d863be596623179061d24c097c4fe7a13f68f5"
+          },
+          {
+            "file": "mirna/mouse-pre.2.bt2",
+            "bytes": 6104,
+            "sha256": "7c47d0c3c4a1005661b4006df15baafcc222113bfac566ca25ef08cbdad64f18"
+          },
+          {
+            "file": "mirna/mouse-pre.3.bt2",
+            "bytes": 7244,
+            "sha256": "acdc9f678b04a74f96b23dae94c3683b3e8103f01f03026367cb3a28c7b9f251"
+          },
+          {
+            "file": "mirna/mouse-pre.4.bt2",
+            "bytes": 6100,
+            "sha256": "2587ae00cdfe586e9eac499a983f89f239f81d1641f213b117419f28fbf754ff"
+          },
+          {
+            "file": "mirna/mouse-pre.rev.1.bt2",
+            "bytes": 4216483,
+            "sha256": "1bbcb65cd71648a9022508bf17d01bbff40e0d10e9fe58bf24a55fe217d7fb9c"
+          },
+          {
+            "file": "mirna/mouse-pre.rev.2.bt2",
+            "bytes": 6104,
+            "sha256": "5c9430f96570329e23710b337a28c05b67fb71ce9a032b4493c1578b83582c01"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "pirna/mouse-pirna",
+        "retain": "T",
+        "files": [
+          {
+            "file": "pirna/mouse-pirna.1.bt2",
+            "bytes": 7680736,
+            "sha256": "b3bb36e7d9f088f04406226b5e7b97e0419265595959c1eabefddb0b4050a78f"
+          },
+          {
+            "file": "pirna/mouse-pirna.2.bt2",
+            "bytes": 585556,
+            "sha256": "932e5e7bfd3a36e328903df3ba308f7b32cbf60c74e6b2d31a8c049217b3120b"
+          },
+          {
+            "file": "pirna/mouse-pirna.3.bt2",
+            "bytes": 1540142,
+            "sha256": "3696d065828b0e388acc963164a937ce77c75ae24d6c293db219c406207043a1"
+          },
+          {
+            "file": "pirna/mouse-pirna.4.bt2",
+            "bytes": 585551,
+            "sha256": "ac781d6d2e1daf38264a556b65804e8812797ff6b97ce762dddc48a70206c469"
+          },
+          {
+            "file": "pirna/mouse-pirna.rev.1.bt2",
+            "bytes": 7680736,
+            "sha256": "8facc74630d2fb356bfc4e4df026b964f9cfde451c14fa6527e42c306275754c"
+          },
+          {
+            "file": "pirna/mouse-pirna.rev.2.bt2",
+            "bytes": 585556,
+            "sha256": "0b56598d2141bd58439c6c6d67c1cdd1e71ba55b9136b8befa33746f86e241fe"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "gtf/mouse-ncrna",
+        "retain": "T",
+        "files": [
+          {
+            "file": "gtf/mouse-ncrna.1.bt2",
+            "bytes": 15820288,
+            "sha256": "22f30b634448cad43c259dfb03736e1dd2ac218d69bbaa822a916e2a2ffb53f8"
+          },
+          {
+            "file": "gtf/mouse-ncrna.2.bt2",
+            "bytes": 7521732,
+            "sha256": "f220948485ebf6c8cb9192ee12275e0be8f60d518927db7f1acec8abb796d84d"
+          },
+          {
+            "file": "gtf/mouse-ncrna.3.bt2",
+            "bytes": 661148,
+            "sha256": "c7662ccff86ad0f7282bb2ba1296d310c7fa29141147c34d97ce9d8e8b1fe36b"
+          },
+          {
+            "file": "gtf/mouse-ncrna.4.bt2",
+            "bytes": 7521726,
+            "sha256": "4f6c398627a6eb0c0847f56549972ab055bdc3adb21fd6ebf0c5ac67ec0557c2"
+          },
+          {
+            "file": "gtf/mouse-ncrna.rev.1.bt2",
+            "bytes": 15820288,
+            "sha256": "46cf488b89a7e0f28475f463f8fb1cd7457a9ed26c5c17621b28428a2f64f190"
+          },
+          {
+            "file": "gtf/mouse-ncrna.rev.2.bt2",
+            "bytes": 7521732,
+            "sha256": "db864b38391ba2a69c6d2c8603fcb1113592a3dfd85966f3cd9a3f0a2c36406a"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "gtf/mouse-cdna",
+        "retain": "T",
+        "files": [
+          {
+            "file": "gtf/mouse-cdna.1.bt2",
+            "bytes": 27776218,
+            "sha256": "8ddb22a72cb0358ab4b2fbcca9c375ecd4c1cd5bf4033681a5d3d9af9ecc6467"
+          },
+          {
+            "file": "gtf/mouse-cdna.2.bt2",
+            "bytes": 17004168,
+            "sha256": "69792627bd0095d8bafa8e1e3eb535150f924c917b53df2d823cdb12daa7c962"
+          },
+          {
+            "file": "gtf/mouse-cdna.3.bt2",
+            "bytes": 392399,
+            "sha256": "95b0f2ccd018f4b5ea759371943433b0b966b55b0f3e6160e359ca8d5690305c"
+          },
+          {
+            "file": "gtf/mouse-cdna.4.bt2",
+            "bytes": 17004164,
+            "sha256": "6d3b6b750e315fe7fd1125bb14b13f924f3b4188efa7b0f2a872efc8fe2937a9"
+          },
+          {
+            "file": "gtf/mouse-cdna.rev.1.bt2",
+            "bytes": 27776218,
+            "sha256": "d3b5d5c6b71508d7f486f90131b856a21fafcb486f161c77396ac218a869bd49"
+          },
+          {
+            "file": "gtf/mouse-cdna.rev.2.bt2",
+            "bytes": 17004168,
+            "sha256": "0a73d698673c00e5b4705a880ecab31b1685621a89c8fdfa0e41ee26cac93db2"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "genome/mouse-genome",
+        "retain": "T",
+        "files": [
+          {
+            "file": "genome/mouse-genome.1.bt2",
+            "bytes": 889076868,
+            "sha256": "3987820689281ba142a055f774cf26fcd260c1ce12550b9f86e527957882440c"
+          },
+          {
+            "file": "genome/mouse-genome.2.bt2",
+            "bytes": 663655452,
+            "sha256": "55b0365bb45f59bcdcff45d460891ce35c862873b64fc984d9d14d13634a73b7"
+          },
+          {
+            "file": "genome/mouse-genome.3.bt2",
+            "bytes": 3374,
+            "sha256": "e6c701dc252c8015d49a817b9cf39bbe4d5b891a7c64c89a9e33b0fcff8a672b"
+          },
+          {
+            "file": "genome/mouse-genome.4.bt2",
+            "bytes": 663655446,
+            "sha256": "ec83dc7f0ced5b70184753082904c8180bcb4e1eb17f321a110aa1fe03becf13"
+          },
+          {
+            "file": "genome/mouse-genome.rev.1.bt2",
+            "bytes": 889076868,
+            "sha256": "7ba705922085ad1e687b1120dfb29577895f78018ef79baa40bf8bac2bd39311"
+          },
+          {
+            "file": "genome/mouse-genome.rev.2.bt2",
+            "bytes": 663655452,
+            "sha256": "cd172c51067678b7479672640c6aa023651e6196bf2a629c3246f9926ba97979"
+          }
+        ]
+      }
+    ]
+  },
+  "installed": {
+    "utc": "20261008T180359Z",
+    "from": "assets_mouse_build",
+    "script": "install_species.py",
+    "script_sha256": "75cab0d3597599a7def490da409f23ed5e405dc42b5663797e7f61cc27cd9b3b"
+  }
+}

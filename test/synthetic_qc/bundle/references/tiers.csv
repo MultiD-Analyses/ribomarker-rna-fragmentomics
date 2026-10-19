@@ -1,0 +1,12 @@
+map_cmd,fasta,index
+bowtie,univec/univec_bt1.fa,univec_bt1
+ribospikebt2,ribospike/ribospike.fa,ribospike
+bowtie,rrna/human-rrna_bt1.fa,human-rrna_bt1
+bowtie2,trna/human-trnas.fa,human-trnas
+bowtie2,mirna/human-mirna.fa,human-mirna
+bowtie2,mirna/human-star.fa,human-star
+bowtie2,mirna/human-pre.fa,human-pre
+bowtie2,pirna/human-pirna.fa,human-pirna
+bowtie2,gtf/human-ncrna.fa,human-ncrna
+bowtie2,gtf/human-cdna.fa,human-cdna
+bowtie2,genome/human-genome.fa,human-genome

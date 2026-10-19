@@ -1,0 +1,575 @@
+{
+  "build": "v1",
+  "builder_script": "buildDB_v1.py",
+  "builder_sha256": "e51e855bb26bfacecd000530832d74fbecfdbef0fa89ce074db75514beb49263",
+  "builder_core_sha256": "a686893e2ade5d979d12a68aba6ec8c64077dc4d1c37d43da4c96a1f734d0040",
+  "species": "human",
+  "built_utc": "2026-07-07T11:49:06Z",
+  "tools": {
+    "python": "3.13.13",
+    "bowtie-build": "bowtie-build version 1.0.0",
+    "bowtie2-build": "bowtie2-build-s version 2.5.5"
+  },
+  "sources": {
+    "genome": {
+      "url": "https://ftp.ensembl.org/pub/release-116/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz",
+      "version": "Ensembl release-116 / GRCh38",
+      "local_file": "genome",
+      "downloaded_utc": "2026-07-07T11:51:39Z",
+      "download_bytes": 1000333172,
+      "sha256": "746dc3b40529bcd09886287ec50b2b9c2f63fc794a14205a94bfd5b12335d845"
+    },
+    "gtf": {
+      "url": "https://ftp.ensembl.org/pub/release-116/gtf/homo_sapiens/Homo_sapiens.GRCh38.116.gtf.gz",
+      "version": "Ensembl release-116 / GRCh38",
+      "local_file": "gtf.gz",
+      "downloaded_utc": "2026-07-07T11:55:37Z",
+      "download_bytes": 141121632,
+      "sha256": "ed992f0eac7197d9627bda618f8f831ba355c95bd5d0796af785387d462828b6"
+    },
+    "trna": {
+      "url": "https://gtrnadb.ucsc.edu/GtRNAdb2/genomes/eukaryota/Hsapi38/hg38-tRNAs.tar.gz",
+      "version": "GtRNAdb2 hg38",
+      "local_file": "trna.tar.gz",
+      "downloaded_utc": "2026-07-07T11:55:39Z",
+      "download_bytes": 128829,
+      "sha256": "55a3543187481a2cde9121269e4aeddc702ca77f82a4110fdc66e09044f7856d"
+    },
+    "mirna": {
+      "url": "https://mirgenedb.org/fasta/hsa?all=1",
+      "version": "MirGeneDB 3.0",
+      "local_file": "mirna.dat",
+      "downloaded_utc": "2026-07-07T11:55:39Z",
+      "download_bytes": 176470,
+      "sha256": "0cebd4662f6c792ca56ce9d7e88271faf4e47692856be73e5a3cd9bb3e1fc48c"
+    },
+    "pirna": {
+      "url": "http://bigdata.ibp.ac.cn/piRBase/download/v3.0/fasta/hsa.gold.fa.gz",
+      "version": "piRBase v3.0 (gold)",
+      "local_file": "pirna",
+      "downloaded_utc": "2026-07-07T11:55:46Z",
+      "download_bytes": 950757,
+      "sha256": "6a62c4fa96c362091bea895f9a7ba41cd9267a9ff507dbd11c078e6ebe14d291",
+      "upstream_md5": "24f5da6a448e060c5a3bc91a7d4a6ac8"
+    },
+    "rrna": {
+      "url": "https://raw.githubusercontent.com/friedlanderlab/mirtrace/master/src/lib/inputs/rRNA_reference.fa",
+      "version": "mirtrace rRNA_reference.fa (branch: master)",
+      "local_file": "rrna.dat",
+      "downloaded_utc": "2026-07-07T11:55:47Z",
+      "download_bytes": 9472176,
+      "sha256": "4cb69b85228bab1bb68a8332cb2308478aa41c0637495cd8a89efe3b6db64d00"
+    },
+    "univec": {
+      "url": "https://ftp.ncbi.nlm.nih.gov/pub/UniVec/UniVec",
+      "version": "NCBI UniVec (current build)",
+      "local_file": "univec.dat",
+      "downloaded_utc": "2026-07-07T11:55:50Z",
+      "download_bytes": 1703918,
+      "sha256": "2fb50fd9749e3c31b77107e902ba81eed87a55fd2f32b99a708a6172d168a1c9"
+    }
+  },
+  "inputs": {
+    "ribospike": {
+      "source_path": "buildDB/inputs/ribospike.fa",
+      "sha256": "25143e9dde9febacdfb1a8ceef9d1221300534ec633cdfa50790be30631337c3"
+    }
+  },
+  "outputs": {
+    "dbpaths": {
+      "file": "human.dbpaths.csv",
+      "bytes": 308,
+      "sha256": "a61fc355ef720b5753fe5d33ba3d8aa680a295804bf6c7a99ba0341e46dc690d"
+    },
+    "bed": {
+      "file": "human.bed",
+      "bytes": 8007611,
+      "sha256": "29d4a04452df9a40bf6669be3e19ecf165bea51167469833485effa913b39ec9"
+    },
+    "indices": [
+      {
+        "map_cmd": "bowtie",
+        "path": "univec/univec_bt1",
+        "retain": "T",
+        "files": [
+          {
+            "file": "univec/univec_bt1.1.ebwt",
+            "bytes": 5060217,
+            "sha256": "ce438176ae3aeaa0453d3d28f0a7f273d7bd7f3624f890546f595390d36e7822"
+          },
+          {
+            "file": "univec/univec_bt1.2.ebwt",
+            "bytes": 157376,
+            "sha256": "ff2519e1c9d562cb33f7b96fcc238eab01b5e6d1179b4d9c9b7a7d270461d928"
+          },
+          {
+            "file": "univec/univec_bt1.3.ebwt",
+            "bytes": 56663,
+            "sha256": "6c68f9159e43d13db15d0e785bc7341bbfce3daa12c2a9af7dae263d7f983b7a"
+          },
+          {
+            "file": "univec/univec_bt1.4.ebwt",
+            "bytes": 314742,
+            "sha256": "66b9ec313beed494b43f60b59f5c6a727755dcc01013d511845340ee03d855f9"
+          },
+          {
+            "file": "univec/univec_bt1.rev.1.ebwt",
+            "bytes": 5060217,
+            "sha256": "0b102def640e1b3687f7fafa5102d05579b219c5bda073ab13e024e01ac4a70a"
+          },
+          {
+            "file": "univec/univec_bt1.rev.2.ebwt",
+            "bytes": 157376,
+            "sha256": "835d48dda37b8aba3c47269fe928701f59f87ebda286d64fe9809a70507aaeb6"
+          }
+        ]
+      },
+      {
+        "map_cmd": "ribospikebt2",
+        "path": "ribospike/ribospike",
+        "retain": "T",
+        "files": [
+          {
+            "file": "ribospike/ribospike.1.bt2",
+            "bytes": 4195265,
+            "sha256": "cb27f951f3a88462e420f9f1fca6a9f5fa49227de21573e2855e6f52cfcc95de"
+          },
+          {
+            "file": "ribospike/ribospike.2.bt2",
+            "bytes": 168,
+            "sha256": "21c2831b85d6066cf9c1eb71f5e155ab0f3b5f8eec0b73c575e6e357a9ef24f9"
+          },
+          {
+            "file": "ribospike/ribospike.3.bt2",
+            "bytes": 368,
+            "sha256": "a0f375d91b49ebb9ca7e2a924393cca5c712bb4311fc736e1f3307e600b12155"
+          },
+          {
+            "file": "ribospike/ribospike.4.bt2",
+            "bytes": 160,
+            "sha256": "e6c13b5a756702d9acca8c7b1957dabc698059ed6f1e376ec712911a7d702a14"
+          },
+          {
+            "file": "ribospike/ribospike.rev.1.bt2",
+            "bytes": 4195265,
+            "sha256": "14d244857687ecf462419415c076dbe51e5a3fd857e6574ce74708d1d6dc7d61"
+          },
+          {
+            "file": "ribospike/ribospike.rev.2.bt2",
+            "bytes": 168,
+            "sha256": "075e34a1d943fec91f54e3205b5fd360006d01e9a027089b25006ec3db0b0ead"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie",
+        "path": "rrna/human-rrna_bt1",
+        "retain": "T",
+        "files": [
+          {
+            "file": "rrna/human-rrna_bt1.1.ebwt",
+            "bytes": 4215173,
+            "sha256": "133e3fc52b7d3db7aa32a4f1da8aa92a87b9e1f5a3781faa7f25d20a9ef2763e"
+          },
+          {
+            "file": "rrna/human-rrna_bt1.2.ebwt",
+            "bytes": 8264,
+            "sha256": "e30172c6eee7e7fa008b279de1ff3f8c28ccd3f845c1333e8b57d5c01696599d"
+          },
+          {
+            "file": "rrna/human-rrna_bt1.3.ebwt",
+            "bytes": 944,
+            "sha256": "a5e62807c480f87f11c5f97bdce34345f9c86c9ce6049d817eaf4cc2519e543b"
+          },
+          {
+            "file": "rrna/human-rrna_bt1.4.ebwt",
+            "bytes": 16514,
+            "sha256": "be0e78b7eba281be120648419201fcbb4e39aa2f9bfadfd4fb94bd76bb0a9f07"
+          },
+          {
+            "file": "rrna/human-rrna_bt1.rev.1.ebwt",
+            "bytes": 4215173,
+            "sha256": "e3dbe92af0a5a69f81d9913126b782b4b9332339b48e36fa8a33d45daea75f9a"
+          },
+          {
+            "file": "rrna/human-rrna_bt1.rev.2.ebwt",
+            "bytes": 8264,
+            "sha256": "4725dc1664853cf82476d42077a31587d4eccb1a4b20b231158f46265a779cfb"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "trna/human-trnas",
+        "retain": "T",
+        "files": [
+          {
+            "file": "trna/human-trnas.1.bt2",
+            "bytes": 4212818,
+            "sha256": "4dc4e76037a73baf15750c74920d56f6da1cfb1339b5dbf764d3adccbb5a2917"
+          },
+          {
+            "file": "trna/human-trnas.2.bt2",
+            "bytes": 5136,
+            "sha256": "bef758e321b6f89f4ea42894f90216312a0783bf4261ed539e0e5543dcc4bc5f"
+          },
+          {
+            "file": "trna/human-trnas.3.bt2",
+            "bytes": 4706,
+            "sha256": "426a0d8bdceb2bb797b244d26c3cdc1770eee0fecc4ddc6c98966ef26c0cb30a"
+          },
+          {
+            "file": "trna/human-trnas.4.bt2",
+            "bytes": 5131,
+            "sha256": "7fb1afa94ed56c147a31bc7d74c4af4b816f7172d8dabf4d0c3685a123689951"
+          },
+          {
+            "file": "trna/human-trnas.rev.1.bt2",
+            "bytes": 4212818,
+            "sha256": "e744459311808a1306bf4f1e4475a2aaacbfa0501a5171c81043edb4a96eab33"
+          },
+          {
+            "file": "trna/human-trnas.rev.2.bt2",
+            "bytes": 5136,
+            "sha256": "71d68b7363c997fd652151c15f0677ba40b79282e83a175918c8465f9d3def80"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "mirna/human-mirna",
+        "retain": "T",
+        "files": [
+          {
+            "file": "mirna/human-mirna.1.bt2",
+            "bytes": 4216005,
+            "sha256": "1d0db03f94ff5a3208da38359476f38d06569c629f265b40643b7f13663e3665"
+          },
+          {
+            "file": "mirna/human-mirna.2.bt2",
+            "bytes": 2812,
+            "sha256": "543f9a3a87ca8b55cce3188afde5a20f1a1c9c202cead4e6507af783022b3694"
+          },
+          {
+            "file": "mirna/human-mirna.3.bt2",
+            "bytes": 9062,
+            "sha256": "105a8befcab76cb94a7526e521a08bc5503fe19e1610eae4f0ff45224c557568"
+          },
+          {
+            "file": "mirna/human-mirna.4.bt2",
+            "bytes": 2805,
+            "sha256": "68a8c5cf0f938a1e866927319dca0505b98c285243a79458d3738e782b9fd3fa"
+          },
+          {
+            "file": "mirna/human-mirna.rev.1.bt2",
+            "bytes": 4216005,
+            "sha256": "a6775b1ca0ee08f23defff9e282454b7227a7aabf4946a5273f448de4956a59d"
+          },
+          {
+            "file": "mirna/human-mirna.rev.2.bt2",
+            "bytes": 2812,
+            "sha256": "e573be0453cf234983715bd14722775f8ff7daa8508a70f4d5622cf25c954d93"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "mirna/human-star",
+        "retain": "T",
+        "files": [
+          {
+            "file": "mirna/human-star.1.bt2",
+            "bytes": 4213544,
+            "sha256": "2d8709bb3daf104957356dce6aba2453bdb1288785e76dc90882b23adc08d51d"
+          },
+          {
+            "file": "mirna/human-star.2.bt2",
+            "bytes": 2464,
+            "sha256": "75b4669da542a40cf650dedaff6f772480ff98df17c6d989e44fa389546ba54a"
+          },
+          {
+            "file": "mirna/human-star.3.bt2",
+            "bytes": 7964,
+            "sha256": "7adbf9a1edbcfe2e2867a2d73a39b4fc77c0a45b5339363e3c1a70958c25392b"
+          },
+          {
+            "file": "mirna/human-star.4.bt2",
+            "bytes": 2457,
+            "sha256": "4cd52d884933bdfa1b35f2b81ae25d4a35817aa41596e3bdb85f5765974acfdf"
+          },
+          {
+            "file": "mirna/human-star.rev.1.bt2",
+            "bytes": 4213544,
+            "sha256": "4f60ab3054978fb78bae8cd720a60adfa7dcddd8d11988533c99ff4330be5fa9"
+          },
+          {
+            "file": "mirna/human-star.rev.2.bt2",
+            "bytes": 2464,
+            "sha256": "27b56efde662d9a5168feb02dc2f92b60cf1f153fb325e7859715b827570193e"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "mirna/human-pre",
+        "retain": "T",
+        "files": [
+          {
+            "file": "mirna/human-pre.1.bt2",
+            "bytes": 4222206,
+            "sha256": "e712f4ef1a24cba93ae65bae233413572ed7dca14d55bd8753d99d8905d22356"
+          },
+          {
+            "file": "mirna/human-pre.2.bt2",
+            "bytes": 7628,
+            "sha256": "efad71c1766a52dce4ac688474cb932b7a69a83611bff3ac4e02000913e597e0"
+          },
+          {
+            "file": "mirna/human-pre.3.bt2",
+            "bytes": 9098,
+            "sha256": "fde9c68c4c86574d6ee6a70e6854e724aae6145b9457d4b52216b14ee75dade3"
+          },
+          {
+            "file": "mirna/human-pre.4.bt2",
+            "bytes": 7621,
+            "sha256": "21bd35a232aa1cd1a2d77a6f954bc17a7936c2acb2415717a54987c502844b6f"
+          },
+          {
+            "file": "mirna/human-pre.rev.1.bt2",
+            "bytes": 4222206,
+            "sha256": "db1958dd5a00b6d9bfff94a2fc72bd48ea929ec6ebb295a232f51646df1d0ab6"
+          },
+          {
+            "file": "mirna/human-pre.rev.2.bt2",
+            "bytes": 7628,
+            "sha256": "e12944431fb10d1c2ef77f3bc28b9f77368df59210442655285bfb8a27e3a6bb"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "pirna/human-pirna",
+        "retain": "T",
+        "files": [
+          {
+            "file": "pirna/human-pirna.1.bt2",
+            "bytes": 7356996,
+            "sha256": "387f8e96be4c139db0c9b86b0093319dabce7c036b3fcafb51f7635e7886e287"
+          },
+          {
+            "file": "pirna/human-pirna.2.bt2",
+            "bytes": 542176,
+            "sha256": "a7dfd69393dbdae5fd3aaacd72ca2cd72dcf75b65d07dd28d2ce3ef83f18819f"
+          },
+          {
+            "file": "pirna/human-pirna.3.bt2",
+            "bytes": 1390364,
+            "sha256": "ff73a0d3b9ceab0cd4e3f473b97aa10f2c76477bcfafc9d0aee92ab1ed8feb77"
+          },
+          {
+            "file": "pirna/human-pirna.4.bt2",
+            "bytes": 542170,
+            "sha256": "778564c857f9020ecb8e1b77995387391a9e0f3b598bda32be1576df59e7f1fb"
+          },
+          {
+            "file": "pirna/human-pirna.rev.1.bt2",
+            "bytes": 7356996,
+            "sha256": "fd58bd4f046a42201812fa460aa79bf7bbe067cdbdbd8e34ad836e74193c4d79"
+          },
+          {
+            "file": "pirna/human-pirna.rev.2.bt2",
+            "bytes": 542176,
+            "sha256": "cbca9b3a26bec9b7c746b198fbefa360e491e28d0e40eb5340825cde81bc51b4"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "gtf/human-ncrna",
+        "retain": "T",
+        "files": [
+          {
+            "file": "gtf/human-ncrna.1.bt2",
+            "bytes": 17783203,
+            "sha256": "b4e98797eda419cd6f97e6edac2823aa94f2acdf651e11d90588e5ccfcce1845"
+          },
+          {
+            "file": "gtf/human-ncrna.2.bt2",
+            "bytes": 8832088,
+            "sha256": "f6e2641b02bc341aa8bc6957c2b46777357fae0b9110ac8ab8b1b33914d5c2fb"
+          },
+          {
+            "file": "gtf/human-ncrna.3.bt2",
+            "bytes": 703187,
+            "sha256": "e047c5ec7ee9533567c363a84056bbeca1926839698e6ec0ee5a8731eadc208b"
+          },
+          {
+            "file": "gtf/human-ncrna.4.bt2",
+            "bytes": 8832084,
+            "sha256": "dc56941dd652389d7400937ac0ab8d9d152fbbaece26b8dc98bcab3b69435e19"
+          },
+          {
+            "file": "gtf/human-ncrna.rev.1.bt2",
+            "bytes": 17783203,
+            "sha256": "0739282f775e5d977f8192bc909d6458dcfffd5fe7ed863e1ee5ca634b53b5da"
+          },
+          {
+            "file": "gtf/human-ncrna.rev.2.bt2",
+            "bytes": 8832088,
+            "sha256": "b947bfa4c00fa8b692f474143ecb7373f33ea1015f12fbc2a9b5d9c4a6a74cdb"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "gtf/human-cdna",
+        "retain": "T",
+        "files": [
+          {
+            "file": "gtf/human-cdna.1.bt2",
+            "bytes": 25671296,
+            "sha256": "85b8c068515a62bd9d4563570e905709a79adb547ae20b21eeab08cd1a510dd6"
+          },
+          {
+            "file": "gtf/human-cdna.2.bt2",
+            "bytes": 15522928,
+            "sha256": "239bb097e45b35a003d61b15c97ef6db6e4cc741d513ac8b2e265b20a92180ac"
+          },
+          {
+            "file": "gtf/human-cdna.3.bt2",
+            "bytes": 361889,
+            "sha256": "150d011f55288012d53f5e1dce58985ec2fa92cb19b746b9ab0ca8b34005cd7e"
+          },
+          {
+            "file": "gtf/human-cdna.4.bt2",
+            "bytes": 15522921,
+            "sha256": "8adf00b3f6d5ad1e5f2d908850d989505f512675d607e7eba86bae88eed69b2c"
+          },
+          {
+            "file": "gtf/human-cdna.rev.1.bt2",
+            "bytes": 25671296,
+            "sha256": "ced6e66a2ec690d514e68e959be6a979c46dc94024501ea7b81d1198d13b1f05"
+          },
+          {
+            "file": "gtf/human-cdna.rev.2.bt2",
+            "bytes": 15522928,
+            "sha256": "1fcb0a1238454910a7fc0511da17581d4cc97739f044a0f553fddd32374d8bf7"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "genome/human-genome",
+        "retain": "T",
+        "files": [
+          {
+            "file": "genome/human-genome.1.bt2",
+            "bytes": 1047689093,
+            "sha256": "8e938408c0d05a072db1acc304e1b3f496f07f74771296b52f4d451113054236"
+          },
+          {
+            "file": "genome/human-genome.2.bt2",
+            "bytes": 782562696,
+            "sha256": "7f9842307511b08cf1eac6c3ea8b73731f8ac349687de92146b249e34e55bd7e"
+          },
+          {
+            "file": "genome/human-genome.3.bt2",
+            "bytes": 17549,
+            "sha256": "662134899278565c4948d93f390204e77ca4558edd13a97812a2d3d98f19b8a0"
+          },
+          {
+            "file": "genome/human-genome.4.bt2",
+            "bytes": 782562689,
+            "sha256": "96f6090baae8210c7b444befde15c9d43fbccad047223c31fd25bd9fd93ac517"
+          },
+          {
+            "file": "genome/human-genome.rev.1.bt2",
+            "bytes": 1047689093,
+            "sha256": "adc115b381bc84dd8b338099a0231c86d136836c7e9d22832ed3059261394bab"
+          },
+          {
+            "file": "genome/human-genome.rev.2.bt2",
+            "bytes": 782562696,
+            "sha256": "9a9d0879768d8275b68b3576de578b296be80ba6136ddc88c1b5dae127de9555"
+          }
+        ]
+      }
+    ]
+  },
+  "outputs_before_update": {
+    "local_dbpaths": {
+      "file": "human.local.dbpaths.csv",
+      "sha256": "0f1ee71cba94a1b3618342c7650b6287871f944f98726c5d938dcb082c2efe80"
+    },
+    "docker_dbpaths": {
+      "file": "human.docker.dbpaths.csv",
+      "sha256": "3a003aeea8c9019865bdd25e87ba62257e793fa44627321fa293917f2a603d33"
+    },
+    "bed": {
+      "file": "human.bed",
+      "sha256": "29d4a04452df9a40bf6669be3e19ecf165bea51167469833485effa913b39ec9"
+    },
+    "indices": [
+      {
+        "map_cmd": "bowtie",
+        "path": "univec/univec_bt1",
+        "retain": "T"
+      },
+      {
+        "map_cmd": "ribospikebt2",
+        "path": "ribospike/ribospike",
+        "retain": "T"
+      },
+      {
+        "map_cmd": "bowtie",
+        "path": "rrna/human-rrna_bt1",
+        "retain": "T"
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "trna/human-trnas",
+        "retain": "T"
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "mirna/human-mirna",
+        "retain": "T"
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "mirna/human-star",
+        "retain": "T"
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "mirna/human-pre",
+        "retain": "T"
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "pirna/human-pirna",
+        "retain": "T"
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "gtf/human-ncrna",
+        "retain": "T"
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "gtf/human-cdna",
+        "retain": "T"
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "genome/human-genome",
+        "retain": "T"
+      }
+    ]
+  },
+  "outputs_updated": {
+    "utc": "2026-10-08T14:15:01Z",
+    "script": "update_manifest.py",
+    "script_sha256": "ce1b4824ec69135b89d86b6b9c79eedf807d7b91609fb5ba444a8b27bb416cb8"
+  }
+}

@@ -1,0 +1,15 @@
+sample,S2
+input_bam,results/levelA_pe/alignments/S2.merged.bam
+output_bam,results/levelA_pe/alignments/S2.bam
+mode,bed
+date,2026-10-05 10:33:39
+bed,test/levels/work/assets_a/human.bed
+mapping_total,677
+mapping_mapped,666
+mapping_unmapped,11
+mapping_unique,629
+mapping_multi,37
+median_read_length,30.0
+reads_annotated,543
+reads_unannotated,57
+reads_total,600

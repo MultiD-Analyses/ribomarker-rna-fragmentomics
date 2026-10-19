@@ -1,0 +1,847 @@
+# Metric dictionary of the QC report: one entry per metric, with its definition and caveats.
+# The report's help texts are taken from this file.
+#
+# Fields per metric
+#   id              unique; never reused with another meaning
+#   section         prov | trim | map | assign | spike | counts
+#   label           short name for report columns
+#   level           sample (default) | run
+#   kind            count | rate | length | ratio | distribution | text | list
+#   unit            unit of the value (counts: reads / read pairs / genes ...)
+#   denominator_id  metric the report divides by to show a percentage (optional)
+#   modes           [pe, se]: run modes in which the metric exists; absent (not 0) otherwise
+#   source          file (relative to output_prefix) and field
+#   definition      what the number is
+#   caveat          what it is not / known limitations (optional)
+#   threshold       candidate threshold (optional; no threshold is applied)
+#
+# Placeholders in ids: {tier} = mapping index name, in the order the run used them
+# (logs/map.log, section 'databases'; e.g. univec_bt1, ribospike, human-rrna_bt1);
+# {biotype} = category in *-typecounts.csv / feature_type in *-featuretypes.csv;
+# {len} = spike-in length 20, 30, 40, 50, 60; {type} = spike-in type T1–T4;
+# {n} = 1, 5, 10; {lane} = sequencing lane of the FASTQ file name (L001, L002, ...).
+#
+# Counts are stored as counts; the report computes percentages from denominator_id.
+# The denominator for "reads entering mapping" is map.total_in in both modes
+# (equal to trim.merged_reads in pe and trim.reads_written in se, check C2).
+
+schema_version: 1
+
+sections:
+  prov: "5.1 Provenance (run level)"
+  trim: "5.3 Trimming and merging (per sample)"
+  map: "5.4 Mapping per reference tier (per sample)"
+  assign: "5.5 Assignment and composition (per sample)"
+  spike: "5.6 Spike-ins (per sample)"
+  counts: "5.8 Detection and counts (per sample)"
+
+metrics:
+
+# ---------------------------------------------------------------- 5.1 provenance
+- id: prov.pipeline_version
+  section: prov
+  label: Pipeline version
+  level: run
+  kind: text
+  unit: "-"
+  modes: [pe, se]
+  source: "docker/VERSION; the code files (codeFingerprint.py), or the CODE_FINGERPRINT file next to VERSION (Docker image); .git/HEAD, or the GIT_COMMIT file next to VERSION (Docker image)"
+  definition: "Content of docker/VERSION, the code fingerprint (sha256 over Snakefile, VERSION, env.lock.txt, scripts/*.py, qc/*.yaml, qc/logos/*.png) and the git commit."
+  caveat: "The commit is read from .git when present (git itself is not run) and does not show uncommitted changes; the code fingerprint does: equal fingerprints mean the same code."
+
+- id: prov.config
+  section: prov
+  label: Configuration
+  level: run
+  kind: text
+  unit: "-"
+  modes: [pe, se]
+  source: "Snakemake config"
+  definition: "The full configuration used, with absolute paths reduced to their last component."
+
+- id: prov.reference_build
+  section: prov
+  label: Reference build
+  level: run
+  kind: text
+  unit: "-"
+  modes: [pe, se]
+  source: "<dbdir>/MANIFEST_<species>.json"
+  definition: "Species, build, builder script hash, and per database: source, version and sha256."
+
+- id: prov.reference_species_check
+  section: prov
+  label: Reference species check
+  level: run
+  kind: text
+  unit: "-"
+  modes: [pe, se]
+  source: "<dbdir>/<species>.bed"
+  definition: >-
+    For every small-RNA contig namespace in the BED file, the species prefix
+    (Homo_sapiens_ / Hsa-, Mus_musculus_ / Mmu-) must match the configured species (check C8).
+  caveat: "The mouse assets in docker/assets contain 261 Homo_sapiens tRNA rows and a human tRNA index."
+
+- id: prov.tool_versions
+  section: prov
+  label: Tool versions
+  level: run
+  kind: text
+  unit: "-"
+  modes: [pe, se]
+  source: "trim.cutadapt.json: cutadapt_version; fastp.json: summary.fastp_version (pe); logs/map.log: line 'tools:'"
+  definition: "cutadapt, fastp, bowtie, bowtie2 and samtools versions as recorded by the run."
+
+- id: prov.library_parameters
+  section: prov
+  label: Library parameters
+  level: run
+  kind: text
+  unit: "-"
+  modes: [pe, se]
+  source: "trim.cutadapt.json and dimer.cutadapt.json: command_line_arguments"
+  definition: "Adapters, 5′ clip, minimum length and minimum overlap as actually used: the cutadapt command lines of the first sample, with file names replaced by <file>."
+
+- id: prov.samples
+  section: prov
+  label: Samples
+  level: run
+  kind: text
+  unit: "-"
+  modes: [pe, se]
+  source: "sample sheet"
+  definition: "Sample, condition and FASTQ file names without directories."
+
+# ---------------------------------------------------------------- 5.3 trimming, paired-end
+- id: trim.pairs_in
+  section: trim
+  label: Read pairs in
+  kind: count
+  unit: read pairs
+  modes: [pe]
+  source: "trimmed/logs/<sample>.trim.cutadapt.json: read_counts.input"
+  definition: "Read pairs processed by cutadapt."
+
+- id: trim.{lane}.pairs_in
+  section: trim
+  label: Read pairs in (lane)
+  kind: count
+  unit: read pairs
+  denominator_id: trim.pairs_in
+  modes: [pe]
+  source: "logs/lanes/<sample>.csv: reads of the lane's R1 file (rule merge_lanes)"
+  definition: "Read pairs of one sequencing lane; only for samples whose lane files the run command merged. The lanes of a sample add up to trim.pairs_in."
+
+- id: trim.r1_with_adapter
+  section: trim
+  label: R1 with adapter
+  kind: count
+  unit: read pairs
+  denominator_id: trim.pairs_in
+  modes: [pe]
+  source: "trim.cutadapt.json: read_counts.read1_with_adapter"
+  definition: "Pairs in which the 3′ adapter was found in read 1 (minimum overlap 1 nt)."
+
+- id: trim.r2_with_adapter
+  section: trim
+  label: R2 with adapter
+  kind: count
+  unit: read pairs
+  denominator_id: trim.pairs_in
+  modes: [pe]
+  source: "trim.cutadapt.json: read_counts.read2_with_adapter"
+  definition: "Pairs in which the 3′ adapter was found in read 2 (minimum overlap 1 nt)."
+
+- id: trim.adapter_dimer_pairs
+  section: trim
+  label: Adapter dimers
+  kind: count
+  unit: read pairs
+  denominator_id: trim.pairs_in
+  modes: [pe]
+  source: "trimmed/logs/<sample>.dimer.cutadapt.json: read_counts.filtered.too_short"
+  definition: >-
+    Pairs discarded by the dimer run of cutadapt, which uses minimum length 1 nt (-m 1):
+    pairs with an empty insert.
+  caveat: >-
+    Equal to the empty inserts on synthetic data in both modes (101 in S1, 83 in S2;
+    docker/tests/qc/test_truth.py).
+
+- id: trim.pairs_too_short
+  section: trim
+  label: Pairs < 15 nt
+  kind: count
+  unit: read pairs
+  denominator_id: trim.pairs_in
+  modes: [pe]
+  source: "trim.cutadapt.json: read_counts.filtered.too_short"
+  definition: "Pairs discarded by the trim run of cutadapt (-m 15): inserts shorter than 15 nt, including adapter dimers."
+  caveat: "The pipeline's *-trimstats.csv labels this number dimer_reads in paired-end mode."
+  threshold: Q3
+
+- id: trim.short_insert_pairs
+  section: trim
+  label: Short inserts (1–14 nt)
+  kind: count
+  unit: read pairs
+  denominator_id: trim.pairs_in
+  modes: [pe]
+  source: "derived"
+  definition: "trim.pairs_too_short − trim.adapter_dimer_pairs: inserts of 1–14 nt."
+
+- id: trim.pairs_written
+  section: trim
+  label: Pairs written
+  kind: count
+  unit: read pairs
+  denominator_id: trim.pairs_in
+  modes: [pe]
+  source: "trim.cutadapt.json: read_counts.output"
+  definition: "Pairs passing cutadapt's filters, passed to fastp for merging."
+
+- id: trim.fastp_low_quality_reads
+  section: trim
+  label: fastp low quality
+  kind: count
+  unit: reads
+  modes: [pe]
+  source: "trimmed/logs/<sample>.fastp.json: filtering_result.low_quality_reads"
+  definition: "Reads removed by fastp's default quality filter."
+  caveat: "Unit is reads: R1 and R2 are counted separately."
+
+- id: trim.fastp_too_many_n_reads
+  section: trim
+  label: fastp too many N
+  kind: count
+  unit: reads
+  modes: [pe]
+  source: "fastp.json: filtering_result.too_many_N_reads"
+  definition: "Reads removed by fastp's N filter."
+  caveat: "Unit is reads: R1 and R2 are counted separately."
+
+- id: trim.fastp_too_short_reads
+  section: trim
+  label: fastp too short
+  kind: count
+  unit: reads
+  modes: [pe]
+  source: "fastp.json: filtering_result.too_short_reads"
+  definition: "Reads removed by fastp's default length filter."
+  caveat: "Unit is reads: R1 and R2 are counted separately."
+
+- id: trim.fastp_corrected_reads
+  section: trim
+  label: fastp overlap-corrected
+  kind: count
+  unit: reads
+  modes: [pe]
+  source: "fastp.json: filtering_result.corrected_reads"
+  definition: "Reads in which fastp corrected at least one base from the R1/R2 overlap."
+  caveat: "Unit is reads: R1 and R2 are counted separately."
+
+- id: trim.fastp_filtered_pairs
+  section: trim
+  label: Pairs removed by fastp
+  kind: count
+  unit: read pairs
+  denominator_id: trim.pairs_written
+  modes: [pe]
+  source: "fastp.json: (read1_before_filtering.total_reads + read2_before_filtering.total_reads − filtering_result.passed_filter_reads) / 2"
+  definition: "Pairs removed by fastp's filters (quality, N, length)."
+  caveat: >-
+    Assumes fastp removes both reads of a pair together (from memory). Consistent with all
+    paired-end fastp reports in results/ (2026-09-30): passed_filter_reads is even and the
+    three failure counts add up to the removed reads.
+
+- id: trim.unmerged_pairs
+  section: trim
+  label: Pairs not merged
+  kind: count
+  unit: read pairs
+  denominator_id: trim.pairs_written
+  modes: [pe]
+  source: "fastp.json: filtering_result.passed_filter_reads / 2 − merged_and_filtered.total_reads"
+  definition: "Pairs that passed fastp's filters but could not be merged (overlap ≥ 10 nt, ≤ 2 differences); these are not mapped."
+  caveat: "Same assumption as trim.fastp_filtered_pairs."
+
+- id: trim.merged_reads
+  section: trim
+  label: Merged reads
+  kind: count
+  unit: reads
+  denominator_id: trim.pairs_written
+  modes: [pe]
+  source: "fastp.json: merged_and_filtered.total_reads"
+  definition: "Merged inserts written by fastp; the reads that enter mapping (= map.total_in, check C2)."
+  threshold: Q4
+
+- id: trim.merged_q30_rate
+  section: trim
+  label: Q30 merged bases
+  kind: rate
+  unit: fraction of bases
+  modes: [pe]
+  source: "fastp.json: merged_and_filtered.q30_bases / merged_and_filtered.total_bases"
+  definition: "Share of merged bases with Phred quality ≥ 30."
+  threshold: Q5
+
+- id: trim.insert_size_peak
+  section: trim
+  label: Insert size peak
+  kind: length
+  unit: nt
+  modes: [pe]
+  source: "fastp.json: insert_size.peak"
+  definition: "fastp's most frequent insert size, estimated from the R1/R2 overlap."
+
+- id: trim.insert_size_hist
+  section: trim
+  label: Insert size distribution
+  kind: distribution
+  unit: read pairs per insert length (nt)
+  modes: [pe]
+  source: "fastp.json: insert_size.histogram"
+  definition: "fastp's insert-size histogram."
+  caveat: "fastp evaluates insert size on a subset of the pairs (S3, level C: 200,835 pairs in the histogram + 6,165 \"unknown\" of 1,655,646); n is the size of that subset, and the unknown count is not stored."
+
+# ---------------------------------------------------------------- 5.3 trimming, single-end
+- id: trim.reads_in
+  section: trim
+  label: Reads in
+  kind: count
+  unit: reads
+  modes: [se]
+  source: "trimmed/logs/<sample>.trim.cutadapt.json: read_counts.input"
+  definition: "Reads (R1 only) processed by cutadapt."
+
+- id: trim.{lane}.reads_in
+  section: trim
+  label: Reads in (lane)
+  kind: count
+  unit: reads
+  denominator_id: trim.reads_in
+  modes: [se]
+  source: "logs/lanes/<sample>.csv: reads of the lane's R1 file (rule merge_lanes)"
+  definition: "Reads of one sequencing lane; only for samples whose lane files the run command merged. The lanes of a sample add up to trim.reads_in."
+
+- id: trim.reads_with_adapter
+  section: trim
+  label: Reads with adapter
+  kind: count
+  unit: reads
+  denominator_id: trim.reads_in
+  modes: [se]
+  source: "trim.cutadapt.json: read_counts.read1_with_adapter"
+  definition: "Reads in which the 3′ adapter was found (minimum overlap 1 nt)."
+
+- id: trim.adapter_dimer_reads
+  section: trim
+  label: Adapter dimers
+  kind: count
+  unit: reads
+  denominator_id: trim.reads_in
+  modes: [se]
+  source: "trimmed/logs/<sample>.dimer.cutadapt.json: read_counts.filtered.too_short"
+  definition: "Reads discarded by the dimer run of cutadapt (-m 1): reads with an empty insert."
+  caveat: "Equality with empty inserts verified on synthetic data (101 in S1, 83 in S2)."
+
+- id: trim.reads_too_short
+  section: trim
+  label: Reads < 15 nt
+  kind: count
+  unit: reads
+  denominator_id: trim.reads_in
+  modes: [se]
+  source: "trim.cutadapt.json: read_counts.filtered.too_short"
+  definition: "Reads discarded by the trim run of cutadapt (-m 15): inserts shorter than 15 nt, including adapter dimers."
+  threshold: Q3
+
+- id: trim.short_insert_reads
+  section: trim
+  label: Short inserts (1–14 nt)
+  kind: count
+  unit: reads
+  denominator_id: trim.reads_in
+  modes: [se]
+  source: "derived"
+  definition: "trim.reads_too_short − trim.adapter_dimer_reads: inserts of 1–14 nt."
+
+- id: trim.reads_written
+  section: trim
+  label: Reads written
+  kind: count
+  unit: reads
+  denominator_id: trim.reads_in
+  modes: [se]
+  source: "trim.cutadapt.json: read_counts.output"
+  definition: "Reads passing cutadapt's filters; the reads that enter mapping (= map.total_in, check C2). No fastp step in single-end mode."
+
+# ---------------------------------------------------------------- 5.3 trimming, both modes
+- id: trim.r1_base_before_adapter
+  section: trim
+  label: Base before adapter (R1)
+  kind: distribution
+  unit: reads per base (A, C, G, T, none)
+  modes: [pe, se]
+  source: "trim.cutadapt.json: adapters_read1[0].three_prime_end.adjacent_bases"
+  definition: "Base preceding the removed 3′ adapter in read 1, i.e. the last base of the insert; 'none' = adapter at the read start."
+  caveat: >-
+    Counted before the length filter, so it includes pairs later discarded as too short.
+    An insert ending in T (the adapter's first base) can lose that base because of the
+    1-nt minimum overlap (-O 1) (inferred); the spike-ins measure this directly.
+
+# ---------------------------------------------------------------- 5.4 mapping tiers
+- id: map.total_in
+  section: map
+  label: Reads into mapping
+  kind: count
+  unit: reads
+  modes: [pe, se]
+  source: "first tier's map.{tier}.reads_in"
+  definition: "Reads entering the first mapping tier."
+
+- id: map.{tier}.reads_in
+  section: map
+  label: Reads in (tier)
+  kind: count
+  unit: reads
+  denominator_id: map.total_in
+  modes: [pe, se]
+  source: "alignments/logs/<sample>.{tier}.log: Bowtie 1 '# reads processed'; Bowtie 2 'N reads; of these'"
+  definition: "Reads entering this tier (= unaligned reads of the previous tier, check C3)."
+
+- id: map.{tier}.aligned
+  section: map
+  label: Aligned (tier)
+  kind: count
+  unit: reads
+  denominator_id: map.total_in
+  modes: [pe, se]
+  source: "same log: Bowtie 1 'reads with at least one reported alignment'; Bowtie 2 'aligned exactly 1 time' + 'aligned >1 times'"
+  definition: "Reads aligned in this tier; they are removed from later tiers. As a share of map.total_in this is the composition before multimapper/antisense removal."
+  caveat: "Log files can contain unrelated warning lines (e.g. '[WARNING] Failed to launch x86-64-v3 version'); parsers ignore them."
+  threshold: "Q6 (tier univec_bt1), Q7 (rRNA tier)"
+
+- id: map.{tier}.unaligned
+  section: map
+  label: Unaligned (tier)
+  kind: count
+  unit: reads
+  denominator_id: map.{tier}.reads_in
+  modes: [pe, se]
+  source: "same log: Bowtie 1 'reads that failed to align'; Bowtie 2 'aligned 0 times'"
+  definition: "Reads not aligned in this tier; passed to the next tier."
+
+- id: map.{tier}.aligned_multi
+  section: map
+  label: Aligned > 1 time (tier)
+  kind: count
+  unit: reads
+  denominator_id: map.{tier}.aligned
+  modes: [pe, se]
+  source: "same log, Bowtie 2 tiers only: 'aligned >1 times'"
+  definition: "Reads with ≥ 2 reported alignments (up to the multimap limit, 100)."
+  caveat: >-
+    Not defined for Bowtie 1 tiers (UniVec, rRNA: -k 1, one alignment per read) and for the
+    spike-in tier (Bowtie 2 with -k 1). Differs by design from assign.multi, which uses
+    tied best scores.
+
+- id: map.final_unaligned
+  section: map
+  label: Unaligned after all tiers
+  kind: count
+  unit: reads
+  denominator_id: map.total_in
+  modes: [pe, se]
+  source: "last tier's map.{tier}.unaligned"
+  definition: "Reads not aligned in any tier (= assign.unmapped, check C4)."
+  threshold: Q8
+
+# ---------------------------------------------------------------- 5.5 assignment
+- id: assign.mapped
+  section: assign
+  label: Mapped
+  kind: count
+  unit: reads
+  denominator_id: map.total_in
+  modes: [pe, se]
+  source: "*-mappingstats.csv: Mapped"
+  definition: "Reads aligned in any tier."
+  caveat: "Includes reads later removed by remove_multimap / remove_antisense (parseMappings.py lines 1100–1101)."
+
+- id: assign.unmapped
+  section: assign
+  label: Unmapped
+  kind: count
+  unit: reads
+  denominator_id: map.total_in
+  modes: [pe, se]
+  source: "*-mappingstats.csv: Unmapped"
+  definition: "Reads not aligned in any tier."
+  caveat: "Inflated in runs before the September 2026 fix."
+
+- id: assign.unique
+  section: assign
+  label: Unique
+  kind: count
+  unit: reads
+  denominator_id: assign.mapped
+  modes: [pe, se]
+  source: "*-mappingstats.csv: Unique"
+  definition: "Mapped reads with one best alignment."
+
+- id: assign.multi
+  section: assign
+  label: Multi
+  kind: count
+  unit: reads
+  denominator_id: assign.mapped
+  modes: [pe, se]
+  source: "*-mappingstats.csv: Multi"
+  definition: "Mapped reads with tied best alignment scores."
+  caveat: "Unique and Multi exclude spike-in reads: assign.unique + assign.multi + spike.reads = assign.mapped (check C10; exact in level C, both modes, both samples)."
+
+- id: assign.kept
+  section: assign
+  label: Kept
+  kind: count
+  unit: reads
+  denominator_id: assign.mapped
+  modes: [pe, se]
+  source: "*-typecounts.csv: sum over all categories except 'unmapped'"
+  definition: "Assigned reads remaining after multimapper/antisense removal."
+
+- id: assign.removed_by_policy
+  section: assign
+  label: Removed by policy
+  kind: count
+  unit: reads
+  denominator_id: assign.mapped
+  modes: [pe, se]
+  source: "derived: assign.mapped − assign.kept"
+  definition: "Mapped reads dropped by the remove_multimap / remove_antisense settings (= mapping_total − reads_total in metrics/<sample>.log, check C6)."
+  threshold: "Q15 (no threshold)"
+
+- id: assign.removed_multimap
+  section: assign
+  label: Removed multimappers
+  kind: count
+  unit: reads
+  denominator_id: assign.mapped
+  modes: [pe, se]
+  source: "derived: assign.multi if remove_multimap is on, else 0"
+  definition: "Reads removed because they align equally well to ≥ 2 loci (all Multi reads when remove_multimap is on, antisense multimappers included)."
+  caveat: "Tiers aligned with one reported alignment (UniVec, rRNA, spike-ins) cannot produce Multi reads; their multimapping is invisible here."
+
+- id: assign.removed_antisense
+  section: assign
+  label: Removed antisense reads
+  kind: count
+  unit: reads
+  denominator_id: assign.mapped
+  modes: [pe, se]
+  source: "derived: assign.removed_by_policy − assign.removed_multimap (remove_antisense on), else 0"
+  definition: "Reads removed because they lie antisense to their assigned feature; with remove_multimap on, only the antisense reads that map once (antisense multimappers are counted as multimappers)."
+  caveat: >-
+    Derived as a difference, not counted directly (mappingstats has no antisense column);
+    any error in either term moves it. Antisense is judged against the highest-priority overlapping
+    feature regardless of strand (see the known limitations in the user guide).
+
+- id: assign.annotated
+  section: assign
+  label: Annotated
+  kind: count
+  unit: reads
+  denominator_id: assign.kept
+  modes: [pe, se]
+  source: "derived: assign.kept − typecounts 'unannotated' − typecounts 'RiboSpike-*'"
+  definition: "Kept reads assigned to an annotated RNA (spike-ins excluded)."
+  caveat: "reads_annotated in metrics/<sample>.log is a different number (it includes unmapped reads) and is not used."
+  threshold: Q1
+
+- id: assign.type.{biotype}.reads
+  section: assign
+  label: Reads (RNA type)
+  kind: count
+  unit: reads
+  denominator_id: assign.kept
+  modes: [pe, se]
+  source: "*-typecounts.csv: row {biotype}"
+  definition: "Kept reads per category; all categories are listed (incl. unannotated, RiboSpike-*, pre-mRNA) except 'unmapped' (= assign.unmapped). Composition after multimapper/antisense removal."
+  caveat: "Removal depletes multi-copy families (tRNA, snRNA, lncRNA, piRNA)."
+
+- id: assign.type.{biotype}.length_hist
+  section: assign
+  label: Length distribution (RNA type)
+  kind: distribution
+  unit: reads per read length (nt)
+  modes: [pe, se]
+  source: "*-typelengths.csv: row (sample, {biotype}), columns 0–150"
+  definition: "Read-length histogram per category (except unmapped), shown as fractions per length."
+  caveat: "Capped at 150 nt (parseMappings.py line 1289); harmless for 2 × 76 nt data."
+
+- id: assign.type.{biotype}.median_length
+  section: assign
+  label: Median length (RNA type)
+  kind: length
+  unit: nt
+  modes: [pe, se]
+  source: "derived from assign.type.{biotype}.length_hist"
+  definition: "Median read length per category."
+
+- id: assign.type.{biotype}.floor_reads
+  section: assign
+  label: Reads 15–17 nt (RNA type)
+  kind: count
+  unit: reads
+  denominator_id: assign.type.{biotype}.reads
+  modes: [pe, se]
+  source: "derived from assign.type.{biotype}.length_hist"
+  definition: "Reads of 15–17 nt per category."
+  caveat: "For mRNA/lncRNA, short reads can match a transcript contig by chance before reaching the genome tier (see the known limitations in the user guide)."
+  threshold: Q14
+
+- id: assign.type.{biotype}.distinct_sequences
+  section: assign
+  label: Distinct sequences (RNA type)
+  kind: count
+  unit: sequences
+  modes: [pe, se]
+  source: "*-biotypedistinctseqs.csv: row {biotype}"
+  definition: "Distinct read sequences per category."
+
+- id: assign.median_read_length
+  section: assign
+  label: Median read length
+  kind: length
+  unit: nt
+  modes: [pe, se]
+  source: "metrics/<sample>.log: median_read_length"
+  definition: "Median length of the kept and the unmapped reads; reads removed by remove_multimap / remove_antisense are not included (they are not in the length tally)."
+
+# ---------------------------------------------------------------- 5.6 spike-ins
+- id: spike.reads
+  section: spike
+  label: Spike-in reads
+  kind: count
+  unit: reads
+  denominator_id: map.total_in
+  modes: [pe, se]
+  source: "ribospike/results/*-ribotype.csv: sum of rows RiboSpike-T1…T4 and RiboSpike-Fragment"
+  definition: "All reads assigned to spike-ins, full-length and fragments."
+  threshold: Q9
+
+- id: spike.fragment_reads
+  section: spike
+  label: Spike-in fragments
+  kind: count
+  unit: reads
+  denominator_id: spike.reads
+  modes: [pe, se]
+  source: "*-ribotype.csv: row RiboSpike-Fragment"
+  definition: "Spike-in reads shorter than designed length − 2 nt (countRiboSpike.py line 146)."
+  caveat: "Labelled RiboSpike-Fragment in countRiboSpike.py and RiboSpike-Short in *-typecounts.csv (same count)."
+
+- id: spike.{len}_{type}.reads
+  section: spike
+  label: Full-length reads (spike)
+  kind: count
+  unit: reads
+  denominator_id: spike.reads
+  modes: [pe, se]
+  source: "*-ribospike.csv: row RiboSpike-{len}-{type}"
+  definition: "Full-length reads (≥ designed length − 2 nt) per spike-in."
+
+- id: spike.{len}.reads
+  section: spike
+  label: Full-length reads (spike length)
+  kind: count
+  unit: reads
+  denominator_id: spike.reads
+  modes: [pe, se]
+  source: "derived: sum of spike.{len}_{type}.reads over T1–T4"
+  definition: "Full-length reads per designed length; across the five lengths this shows length-dependent recovery."
+  caveat: "Interpretable as capture efficiency only if the spikes are added in equal amounts (to confirm with RealSeq)."
+
+- id: spike.{len}.length_offset_hist
+  section: spike
+  label: Length offset (spike length)
+  kind: distribution
+  unit: reads per offset (nt)
+  modes: [pe, se]
+  source: "*-ribolengths.csv: rows RiboSpike-T1…T4, lengths {len} − 2 … {len} + 2, summed over types"
+  definition: "Observed − designed length of full-length reads (designed lengths include the 4N ends)."
+  caveat: >-
+    Offsets below −2 cannot occur: such reads are fragments. The paired-end −1 mode of runs
+    before 2026-09-29 was caused by -U 1; after the fix the mode is 0 in both modes
+    (synthetic and level C data).
+
+- id: spike.{len}.modal_offset
+  section: spike
+  label: Modal length offset
+  kind: length
+  unit: nt
+  modes: [pe, se]
+  source: "derived from spike.{len}.length_offset_hist"
+  definition: "Most frequent offset."
+
+- id: spike.{len}.modal_offset_reads
+  section: spike
+  label: Reads at modal offset
+  kind: count
+  unit: reads
+  denominator_id: spike.{len}.reads
+  modes: [pe, se]
+  source: "derived from spike.{len}.length_offset_hist"
+  definition: "Full-length reads at the modal offset (length fidelity)."
+  threshold: Q10
+
+- id: spike.{len}.end_base_deviation
+  section: spike
+  label: End-base deviation (all full-length reads)
+  kind: rate
+  unit: fraction
+  modes: [pe, se]
+  source: "*-ribospikeends.csv: rows RiboSpike-{len}-T1…T4, positions 5p_1–5p_4 and 3p_1–3p_4, summed over types"
+  definition: "At the 4 random positions of each end: largest absolute deviation of any base share from 0.25."
+  caveat: >-
+    Ends are taken from every full-length read (designed length −2…+2 nt), so reads that are 1–2 nt
+    short or long put fixed spike bases into the random positions; and the value is the maximum of
+    32 base shares, so √(0.1875 / n), the sampling SD of a single share, understates its
+    chance level (expected maximum ≈ 2.3 × that SD; review 2026-10-02). Uniform ends are expected
+    if ligation is unbiased (inferred). On level B data the exact-length value differs little from this one
+    (see spike.{len}.end_base_composition). Kept for comparison; the report shows
+    spike.{len}.end_base_composition (exact-length reads) instead (2026-10-02).
+
+- id: spike.{len}.exact_reads
+  section: spike
+  label: Exact-length reads (spike length)
+  kind: count
+  unit: reads
+  denominator_id: spike.{len}.reads
+  modes: [pe, se]
+  source: "*-ribospikeends_exact.csv: reads per end position, summed over T1–T4"
+  definition: "Full-length reads of exactly the designed length, aligned from the first to the last spike base without indels (CIGAR {len}M); only in these reads are the first and last 4 bases certainly the random 4N positions."
+
+- id: spike.{len}.end_base_composition
+  section: spike
+  label: End-base composition
+  kind: rate
+  unit: fraction
+  modes: [pe, se]
+  source: "*-ribospikeends_exact.csv: rows RiboSpike-{len}-T1…T4, positions 5p_1–5p_4 and 3p_1–3p_4, summed over types"
+  definition: "In exact-length reads (spike.{len}.exact_reads), at the 4 random positions of each end: largest absolute deviation of any base share from 0.25."
+  caveat: >-
+    Compare with spike.{len}.end_base_chance. Shows the composition of the random ends, not
+    necessarily a ligation bias: uniform shares also require that the 4N bases were synthesised in
+    equal amounts (unknown; to confirm with RealSeq). PCR duplicates make the effective number of
+    molecules smaller than n, so the chance level is a lower bound. Whether a read has exactly the
+    designed length may itself depend on its end bases.
+
+- id: spike.{len}.end_base_chance
+  section: spike
+  label: End-base composition, chance level
+  kind: rate
+  unit: fraction
+  modes: [pe, se]
+  source: "derived: 2.31 × √(0.1875 / n), n = spike.{len}.exact_reads"
+  definition: "Expected spike.{len}.end_base_composition if the 4N bases were uniform, for the same number of reads: the largest of the 32 deviations (8 positions × 4 bases) is on average 2.31 sampling SDs of one share (simulation, qcCollect.py END_BASE_CHANCE_FACTOR)."
+
+# ---------------------------------------------------------------- 5.8 counts
+- id: counts.library_size
+  section: counts
+  label: Library size
+  kind: count
+  unit: reads
+  modes: [pe, se]
+  source: "*-genecounts.csv: column sum per sample"
+  definition: "Gene-level counts (mature exonic, after multimapper/antisense removal; excludes pre-mRNA, pre-tRNA, miRNA-pre, spike-ins, unannotated)."
+
+- id: counts.detected.gt{n}
+  section: counts
+  label: Genes detected
+  kind: count
+  unit: genes
+  modes: [pe, se]
+  source: "*-genecounts.csv"
+  definition: "Genes with more than {n} counts (n = 0, 5, 10)."
+  threshold: "Q11 (n = 10)"
+
+- id: counts.detected.{biotype}.gt{n}
+  section: counts
+  label: Genes detected (RNA type)
+  kind: count
+  unit: genes
+  modes: [pe, se]
+  source: "*-genecounts.csv joined with *-genelengths.csv (column biotype)"
+  definition: "Genes of one RNA type with more than {n} counts (n = 0, 5, 10)."
+  caveat: "The gene's RNA type is the one collapseGenes.py writes to *-genelengths.csv."
+  threshold: "Q11 (n = 10)"
+
+- id: counts.top10_reads
+  section: counts
+  label: Top-10 genes
+  kind: count
+  unit: reads
+  denominator_id: counts.library_size
+  modes: [pe, se]
+  source: "*-genecounts.csv"
+  definition: "Counts in the 10 highest genes (dominance)."
+  caveat: "In practice rRNA: in all six samples of 2026-09-30 the 10 highest genes are rRNA copies (77-83 % of the library); see counts.top10_reads_non_rrna."
+  threshold: Q12
+
+- id: counts.library_size_non_rrna
+  section: counts
+  label: Library size without rRNA
+  kind: count
+  unit: reads
+  modes: [pe, se]
+  source: "*-genecounts.csv joined with *-genelengths.csv (column biotype)"
+  definition: "Gene-level counts of all genes except rRNA and Mt_rRNA."
+
+- id: counts.top10_reads_non_rrna
+  section: counts
+  label: Top-10 genes without rRNA
+  kind: count
+  unit: reads
+  denominator_id: counts.library_size_non_rrna
+  modes: [pe, se]
+  source: "*-genecounts.csv joined with *-genelengths.csv (column biotype)"
+  definition: "Counts in the 10 highest genes that are not rRNA or Mt_rRNA (dominance without rRNA)."
+  threshold: Q12
+
+- id: counts.top20
+  section: counts
+  label: Top-20 RNAs
+  kind: list
+  unit: "gene: reads"
+  modes: [pe, se]
+  source: "*-genecounts.csv"
+  definition: "The 20 most abundant RNAs (genes of every RNA type in *-genecounts.csv) with their counts; genes with 0 counts are left out."
+
+- id: counts.{biotype}.top20
+  section: counts
+  label: Top-20 RNAs (RNA type)
+  kind: list
+  unit: "gene: reads"
+  modes: [pe, se]
+  source: "*-genecounts.csv joined with *-genelengths.csv (column biotype)"
+  definition: "The 20 most abundant RNAs of one RNA type with their counts; genes with 0 counts are left out."
+  caveat: "The gene's RNA type is the one collapseGenes.py writes to *-genelengths.csv."
+
+- id: counts.rbc_mirna_ratio
+  section: counts
+  label: miR-451a / miR-23a-3p
+  kind: ratio
+  unit: ratio of reads
+  modes: [pe, se]
+  source: "*-genecounts.csv: Hsa-/Mmu-Mir-451_5p and Hsa-/Mmu-Mir-23-P3_3p"
+  definition: "miR-451a reads / miR-23a-3p reads (raw counts); omitted (not evaluable) when miR-23a-3p has 0 reads; descriptive only."
+  caveat: >-
+    That Mir-23-P3_3p is miR-23a-3p is from memory (sequence ends …GAUUUCC, verified).
+    miR-23a-3p and miR-23b-3p differ at two positions near the 3′ end, so short fragments
+    tie and are removed as multimappers. The qPCR haemolysis cut-off does not transfer to counts:
+    count ratios carry ligation and mapping biases that qPCR does not, so a cut-off needs a
+    calibration against qPCR on the same samples. Until 2026-10-06 reported as
+    log2((miR-451a + 1) / (miR-23a-3p + 1)) (counts.rbc_mirna_log2ratio).
+  threshold: Q13

@@ -1,0 +1,43 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below, and the RiboMarker method paper."
+type: software
+title: "RiboMarker: a pipeline for RNA fragmentomics"
+abstract: >-
+  Turns small-RNA sequencing reads (FASTQ) from RiboMarker libraries into counts per gene,
+  feature and RNA type, per-transcript coverage files and a technical QC report with
+  consistency checks. Runs in a container image with the human and mouse references built in.
+authors:
+  - given-names: Martin
+    family-names: Smelik
+    affiliation: MultiD Analyses AB
+license: MIT
+repository-code: "https://github.com/MultiD-Analyses/ribomarker-rna-fragmentomics"
+url: "https://github.com/MultiD-Analyses/ribomarker-rna-fragmentomics"
+keywords:
+  - small RNA
+  - RNA sequencing
+  - cell-free RNA
+  - RNA fragmentomics
+  - quality control
+  - Snakemake
+references:
+  - type: article
+    title: "A method of comprehensive sequencing analysis of the small RNA fragmentome (RiboMarker)"
+    authors:
+      - given-names: Rachel C.
+        family-names: Clark
+      - given-names: Aidan C.
+        family-names: Manning
+      - given-names: Jonathan M.
+        family-names: Howard
+      - given-names: Sergio
+        family-names: Barberán-Soler
+      - given-names: Sergei A.
+        family-names: Kazakov
+    journal: RNA
+    year: 2026
+    volume: 32
+    issue: 7
+    start: 1156
+    end: 1181
+    doi: 10.1261/rna.080861.125

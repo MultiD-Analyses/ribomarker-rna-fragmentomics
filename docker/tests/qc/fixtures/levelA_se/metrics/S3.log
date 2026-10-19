@@ -1,0 +1,15 @@
+sample,S3
+input_bam,results/levelA_se/alignments/S3.merged.bam
+output_bam,results/levelA_se/alignments/S3.bam
+mode,bed
+date,2026-10-05 10:34:23
+bed,test/levels/work/assets_a/human.bed
+mapping_total,80
+mapping_mapped,80
+mapping_unmapped,0
+mapping_unique,80
+mapping_multi,0
+median_read_length,16.5
+reads_annotated,80
+reads_unannotated,0
+reads_total,80

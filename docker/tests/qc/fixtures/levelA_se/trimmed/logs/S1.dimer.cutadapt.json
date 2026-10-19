@@ -1,0 +1,115 @@
+{
+  "tag": "Cutadapt report",
+  "schema_version": [0, 3],
+  "cutadapt_version": "5.2",
+  "python_version": "3.13.13",
+  "command_line_arguments": [
+    "-O",
+    "1",
+    "-j",
+    "8",
+    "-u",
+    "1",
+    "-m",
+    "1",
+    "-Z",
+    "-a",
+    "TGGAATTCTCGGGTGCCAAGG",
+    "--json",
+    "results/levelA_se/trimmed/logs/S1.dimer.cutadapt.json",
+    "-o",
+    "results/levelA_se/trimmed/S1.dimer.fq.gz",
+    "test/synthetic_qc/bundle/fastq/S1_R1_001.fastq.gz"
+  ],
+  "cores": 8,
+  "input": {
+    "path1": "test/synthetic_qc/bundle/fastq/S1_R1_001.fastq.gz",
+    "path2": null,
+    "paired": false
+  },
+  "read_counts": {
+    "input": 1082,
+    "filtered": {
+      "too_short": 101,
+      "too_long": null,
+      "too_many_n": null,
+      "too_many_expected_errors": null,
+      "casava_filtered": null,
+      "discard_trimmed": null,
+      "discard_untrimmed": null
+    },
+    "output": 981,
+    "reverse_complemented": null,
+    "read1_with_adapter": 1056,
+    "read2_with_adapter": null
+  },
+  "basepair_counts": {
+    "input": 82232,
+    "input_read1": 82232,
+    "input_read2": null,
+    "quality_trimmed": null,
+    "quality_trimmed_read1": null,
+    "quality_trimmed_read2": null,
+    "poly_a_trimmed": null,
+    "poly_a_trimmed_read1": null,
+    "poly_a_trimmed_read2": null,
+    "output": 31715,
+    "output_read1": 31715,
+    "output_read2": null
+  },
+  "adapters_read1": [
+    {
+      "name": "1",
+      "total_matches": 1056,
+      "on_reverse_complement": null,
+      "linked": false,
+      "five_prime_end": null,
+      "three_prime_end": {
+        "type": "regular_three_prime",
+        "sequence": "TGGAATTCTCGGGTGCCAAGG",
+        "error_rate": 0.1,
+        "indels": true,
+        "error_lengths": [9, 19, 21],
+        "matches": 1056,
+        "adjacent_bases": {
+          "A": 215,
+          "C": 275,
+          "G": 211,
+          "T": 254,
+          "": 101
+        },
+        "dominant_adjacent_base": null,
+        "trimmed_lengths": [
+          {"len": 1, "expect": 270.5, "counts": [11]},
+          {"len": 15, "expect": 0.0, "counts": [37]},
+          {"len": 16, "expect": 0.0, "counts": [8]},
+          {"len": 17, "expect": 0.0, "counts": [4]},
+          {"len": 18, "expect": 0.0, "counts": [4]},
+          {"len": 25, "expect": 0.0, "counts": [28]},
+          {"len": 26, "expect": 0.0, "counts": [8]},
+          {"len": 27, "expect": 0.0, "counts": [4]},
+          {"len": 28, "expect": 0.0, "counts": [4]},
+          {"len": 35, "expect": 0.0, "counts": [28]},
+          {"len": 36, "expect": 0.0, "counts": [8]},
+          {"len": 37, "expect": 0.0, "counts": [4]},
+          {"len": 38, "expect": 0.0, "counts": [4]},
+          {"len": 45, "expect": 0.0, "counts": [608]},
+          {"len": 46, "expect": 0.0, "counts": [8]},
+          {"len": 47, "expect": 0.0, "counts": [4]},
+          {"len": 48, "expect": 0.0, "counts": [4]},
+          {"len": 51, "expect": 0.0, "counts": [59]},
+          {"len": 55, "expect": 0.0, "counts": [40]},
+          {"len": 56, "expect": 0.0, "counts": [8]},
+          {"len": 57, "expect": 0.0, "counts": [4]},
+          {"len": 58, "expect": 0.0, "counts": [4]},
+          {"len": 60, "expect": 0.0, "counts": [11]},
+          {"len": 65, "expect": 0.0, "counts": [53]},
+          {"len": 75, "expect": 0.0, "counts": [101]}
+        ]
+      }
+    }
+  ],
+  "adapters_read2": null,
+  "poly_a_trimmed_read1": null,
+  "poly_a_trimmed_read2": null
+}

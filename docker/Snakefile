@@ -1,0 +1,581 @@
+import os
+import shutil
+import subprocess
+import sys
+import pandas as pd
+import yaml
+from pathlib import Path
+
+###############################################################################
+# Load configuration from YAML file
+###############################################################################
+
+#configfile: "config.yaml"   ## Comment/uncomment when running localy vs in docker
+
+
+
+# Base input directory (local or container)
+input_dir = config.get("input_dir", ".")
+
+
+dbdir = config.get("dbdir", None)
+
+
+
+
+
+###############################################################################
+# Get sample file name from config
+###############################################################################
+
+samples = config.get("samples", "samples.csv")  # Default to samples.csv in input directory
+samples = os.path.join(input_dir, samples)  # Adjust path for Docker
+pairs = config.get("pairs", "default")  # Default to pairs.csv in input directory
+if pairs != "default":
+    pairs = os.path.join(input_dir, pairs)  # Adjust path for Docker
+
+###############################################################################
+# Load required parameters from config
+###############################################################################
+
+output_prefix = config.get("output_prefix", "example")  # Prefix for output files
+species = config.get("species", "human2")  # Species for database selection
+mapper = config.get("mapper", "bowtie2")  # Mapping tool for database selection
+trim_fastq = config.get("trim_fastq", True) # dbpathsWhether or not to trim adapters
+count_ribospike = config.get("count_ribospike", True) # Whether or not to count RiboSpike hits
+trim_only = config.get("trim_only", False) # Whether to only trim reads
+dump_unmapped = config.get("dump_unmapped", False) # Whether to dump unmapped reads
+unique_only = config.get("unique_only", False) # Whether to only keep unique reads
+qc_report = config.get("qc_report", True)  # QC collector + technical report (docker/scripts/qcCollect.py, qcReport.py)
+
+remove_multimap  = config.get("remove_multimap", True)
+remove_antisense = config.get("remove_antisense", True)
+
+_paired_end_config = config.get("paired_end", None)
+if _paired_end_config is not None:
+    paired_end = _paired_end_config
+elif os.path.exists(samples):
+    with open(samples) as _f:
+        paired_end = len(_f.readline().strip().split(',')) == 4
+else:
+    paired_end = False
+#scriptdir = "scripts" # Script paths (relative to Docker working directory)
+PIPELINE_DIR = Path(workflow.basedir)  # directory containing the Snakefile
+scriptdir = PIPELINE_DIR / "scripts"
+# How the scripts are started: a compiled riboMarker binary if one exists, else Python (the image
+# has run the plain Python scripts since the publication step 2)
+
+ribomarker_exec = os.path.join(scriptdir, "riboMarker")
+sys.path.insert(0, str(scriptdir))
+from dbPaths import find_dbpaths  # which dbpaths file to read
+
+if not os.path.exists(ribomarker_exec):
+    ribomarker_exec = f"python {os.path.join(scriptdir, 'main.py')}"
+    
+    
+
+    
+    
+if dbdir is None:
+    raise ValueError(
+        "dbdir must be set: in-pipeline database building (buildDB) was removed. "
+        "Build assets with buildDB/buildDB_v1.py and point dbdir at them."
+    )
+dbpaths = find_dbpaths(dbdir, species)
+bedfile = os.path.join(dbdir, f"{species}.bed")
+
+###############################################################################
+# Load optional parameters from config
+###############################################################################
+
+collapse = config.get("collapse", True)  # Toggle to collapse reads before mapping
+multimap = config.get("multimap", 100)  # Maximum allowed multimapped reads
+threads = config.get("threads", 20)  # Number of processing threads
+subsample_amount = config.get("subsample_reads", 0)  # Number of reads to subsample
+keep_types    = config.get("keep_types", "all")     # 'all' or comma-separated, no spaces
+###############################################################################
+###############################################################################
+###############################################################################
+
+print("-" * 50)
+print(f"species: {species}")
+print(f"maptools: {mapper}")
+print(f"output_prefix: {output_prefix}")
+print(f"collapse: {collapse}")
+print(f"multimap: {multimap}")
+print(f"threads: {threads}")
+print(f"paired_end: {paired_end}")
+print(f"subsample_amount: {subsample_amount}")
+print(f"trim_fastq: {trim_fastq}")
+print(f"count_ribospike: {count_ribospike}")
+print(f"trim_only: {trim_only}")
+print(f"dump_unmapped: {dump_unmapped}")
+print(f"unique_only: {unique_only}")
+print(f"qc_report: {qc_report}")
+print("-" * 50)
+
+###############################################################################
+# Functions to dynamically build up output
+###############################################################################
+
+def get_all_outputs(wildcards):
+    """
+    All final targets of 'rule all': the pipeline outputs plus, with qc_report: True,
+    the QC outputs (not for trim_only runs, which have nothing to map).
+    """
+    targets = get_pipeline_outputs(wildcards)
+    if qc_report and not trim_only:
+        targets += [f"{output_prefix}/qc/qc_metrics.json", f"{output_prefix}/qc/report_technical.html"]
+    return targets
+
+
+def get_pipeline_outputs(wildcards):
+    """
+    Returns a list of all pipeline output targets (everything except the QC outputs).
+    Conditionally includes the trimming output if trim_fastq is True.
+    """
+    targets = []
+
+    # If trimming is on, include the trimstats CSV
+    if trim_fastq:
+        targets.append(f"{output_prefix}/{output_prefix}-trimstats.csv")
+        targets.append(f"{output_prefix}/samples.trimmed.csv")
+        if paired_end:
+            targets.extend(sample_fastqfiles_merged)
+        else:
+            targets.extend(sample_fastqfiles_trimmed)
+
+    if trim_only == True:
+        return targets
+
+    if collapse == True:
+        targets.append(f"{output_prefix}/samples.collapse.csv")
+        targets.extend(sample_fastqfiles_collapsed)
+
+    if subsample_amount > 0:
+        targets.append(f"{output_prefix}/samples.collapse.csv")
+        targets.extend(sample_fastqfiles_subsampled)
+
+
+    # Reads per lane of the samples whose lanes were merged
+    targets.extend(lane_counts)
+
+    # Always include the final BAM files
+    targets.extend(sample_bamfiles_merged)
+
+    # Add parse_mappings outputs
+    targets.append(f"{output_prefix}/{output_prefix}-mappingstats.csv")
+    targets.append(f"{output_prefix}/{output_prefix}-readcounts.csv")
+    targets.append(f"{output_prefix}/{output_prefix}-typecounts.csv")
+    targets.append(f"{output_prefix}/{output_prefix}-typelengths.csv")
+    targets.append(f"{output_prefix}/{output_prefix}-featuretypes.csv")
+    # The gene table needs remove-at-source counts: collapseGenes.py stops on _multimap/_antisense rows
+    if remove_multimap and remove_antisense:
+        targets.append(f"{output_prefix}/{output_prefix}-genecounts.csv")
+        targets.append(f"{output_prefix}/{output_prefix}-genelengths.csv")
+
+
+    # Add bam files from parse_mappings
+    targets.extend(sample_bamfiles)
+
+    # Add ribospike outputs if True
+    if count_ribospike:
+        targets.append(f"{output_prefix}/ribospike/{output_prefix}-ribospike.csv")
+        targets.append(directory(f"{output_prefix}/ribospike"))
+
+    targets.extend(sample_bedgraphfiles)
+    targets.extend(expand(f"{output_prefix}/bedgraph_full/{{sample}}.bedgraph", sample=sample_ids))
+    
+
+    # You can append other final targets here as needed.
+    return targets
+
+###############################################################################
+# Generate all bamfiles
+###############################################################################
+def parse_sample_ids(path):
+    """
+    Example function to read a sample CSV and return a list of sample IDs.
+    Adjust parsing logic to match your CSV format.
+    """
+    if paired_end == True:
+        sampleinfo = pd.read_csv(path, header=None, names=["sample", "condition", "fastq", "fastq2"])
+    else:
+        sampleinfo = pd.read_csv(path, header=None, names=["sample", "condition", "fastq"])
+    sample_ids = sampleinfo["sample"].tolist()
+
+    return sample_ids
+
+# If that file doesn't exist yet, it might get generated by an upstream rule.
+# The simplest approach is to do a "best effort" parse or fallback.
+sample_ids = []
+if os.path.exists(samples):
+    sample_ids = parse_sample_ids(samples)
+else:
+    # You could also leave it empty until it is created, or handle it differently.
+    pass
+# Create a global list of expected bam files
+sample_bamfiles_merged = expand(
+    f"{output_prefix}/alignments/{{sample}}.merged.bam", 
+    sample=sample_ids
+)
+
+sample_bamfiles = expand(
+    f"{output_prefix}/alignments/{{sample}}.bam", 
+    sample=sample_ids
+)
+
+sample_bedgraphfiles = expand(
+    f"{output_prefix}/bedgraph/{{sample}}.bedgraph",
+    sample=sample_ids
+)
+
+bedgraph_full = expand(
+    f"{output_prefix}/bedgraph_full/{{sample}}.bedgraph",
+    sample=sample_ids
+)
+
+sample_fastqfiles_trimmed = expand(
+    f"{output_prefix}/trimmed/{{sample}}.trimmed.fq.gz", 
+    sample=sample_ids
+)
+
+sample_fastqfiles_collapsed = expand(
+    f"{output_prefix}/collapse/{{sample}}.collapse.fa", 
+    sample=sample_ids
+)
+
+sample_fastqfiles_merged = expand(
+    f"{output_prefix}/trimmed/{{sample}}.merged.fq.gz", 
+    sample=sample_ids
+)
+
+sample_fastqfiles_subsampled = expand(
+    f"{output_prefix}/subsample/{{sample}}.subsample.fq.gz", 
+    sample=sample_ids
+)
+
+if collapse == True:
+    sample_downstream = f"{output_prefix}/samples.collapse.csv"
+    map_input_fastq = sample_fastqfiles_collapsed
+    collapse_output = sample_fastqfiles_collapsed
+elif collapse == False:
+    if subsample_amount > 0:
+        sample_downstream = f"{output_prefix}/samples.collapse.csv"
+        map_input_fastq = sample_fastqfiles_subsampled
+        collapse_output = sample_fastqfiles_subsampled
+    else:
+        if trim_fastq == True:
+            sample_downstream = f"{output_prefix}/samples.trimmed.csv"
+            if paired_end:
+                map_input_fastq = sample_fastqfiles_merged
+            else:
+                map_input_fastq = sample_fastqfiles_trimmed
+        else:
+            sample_downstream = samples
+            print(f"Need to process fastq files. Exiting.")
+            exit(1)
+
+###############################################################################
+# Rule: all
+###############################################################################
+
+rule all:
+    """
+    Default top-level target that ensures everything is generated.
+    """
+    input:
+        get_all_outputs
+
+###############################################################################
+# Rule: Trim adapters and filter reads (only if trim_fastq=True)
+###############################################################################
+
+###############################################################################
+# Rule: merge lanes
+###############################################################################
+# config 'lanes': a CSV (sample, read, lane, file) written by the run command for the samples with
+# two or more lane files; the sample sheet then names the merged files by their absolute path.
+# The merged files are temporary: Snakemake deletes them once trimming has read them.
+lane_reads = ["R1", "R2"] if paired_end else ["R1"]
+lane_files = {}                                   # sample -> read -> [(lane, file)]
+if config.get("lanes"):
+    for row in pd.read_csv(config["lanes"], dtype=str).itertuples():
+        lane_files.setdefault(row.sample, {}).setdefault(row.read, []).append((row.lane, row.file))
+merged_fastqs = expand(f"{output_prefix}/input_merged/{{sample}}_{{read}}_001.fastq.gz",
+                       sample=sorted(lane_files), read=lane_reads)
+lane_counts = expand(f"{output_prefix}/logs/lanes/{{sample}}.csv", sample=sorted(lane_files))
+
+rule merge_lanes:
+    input:
+        lambda wc: [path for read in lane_reads for _, path in sorted(lane_files[wc.sample][read])]
+    output:
+        fastq = temp(expand(f"{output_prefix}/input_merged/{{{{sample}}}}_{{read}}_001.fastq.gz", read=lane_reads)),
+        counts = f"{output_prefix}/logs/lanes/{{sample}}.csv",
+    run:
+        with open(output.counts, "w") as table:
+            table.write("read,lane,reads\n")
+            for read, merged in zip(lane_reads, output.fastq):
+                with open(merged, "wb") as out:
+                    for lane, path in sorted(lane_files[wildcards.sample][read]):
+                        with open(path, "rb") as f:
+                            shutil.copyfileobj(f, out)          # concatenated gzip files are one valid gzip file
+                        lines = subprocess.run(f"gzip -dc '{path}' | wc -l", shell=True, check=True,
+                                               capture_output=True, text=True).stdout
+                        table.write(f"{read},{lane},{int(lines) // 4}\n")
+
+
+# This rule is defined conditionally; if trim_fastq==False,
+# Snakemake will never see 'rule trim_reads' in the DAG at all.
+rule trim_reads:
+    input:
+        # Our only real "dependency" is the samples CSV, but you could
+        # depend on other results if you wanted.
+        samples = samples,
+        merged = merged_fastqs                    # merged lanes (empty without lanes)
+    output:
+        trimstats = f"{output_prefix}/{output_prefix}-trimstats.csv",
+        trimsamples = f"{output_prefix}/samples.trimmed.csv",
+        trimmedreads = sample_fastqfiles_merged if paired_end else sample_fastqfiles_trimmed
+        #fastqc = directory(f"{output_prefix}/trimmed/logs/fastqc"),
+    threads: threads
+    shell:
+        """
+        {ribomarker_exec} \
+            --script trimAdapters -- \
+            --samples {input.samples} \
+            --threads {threads} \
+            --output {output_prefix} \
+            --fastqdir {input_dir} 
+        """
+
+
+###############################################################################
+# Rule: Collapse reads
+###############################################################################
+def construct_command_collapse(input, output_prefix, scriptdir, samples):
+    cmd = [
+        f"{ribomarker_exec}",
+        f"--script collapseReads --",
+        f"--samples {input.samples}",
+        f"--output {output_prefix}",
+        f"--threads {threads}",
+    ]
+
+    if subsample_amount > 0:
+        cmd.append(f"-x {subsample_amount}")
+        if collapse == False:
+            cmd.append(f"--subsampleonly")
+
+    if trim_fastq == False:
+        cmd.append(f"--fastqdir {input_dir}")
+
+    return " \\\n".join(cmd)
+
+rule collapse_reads:
+    input:
+        samples = samples if not trim_fastq else f"{output_prefix}/samples.trimmed.csv"
+    output:
+        logfile = f'{output_prefix}/logs/collapse.log',
+        collapse_samples = f'{output_prefix}/samples.collapse.csv',
+        collapse_reads = collapse_output if collapse == True else sample_fastqfiles_subsampled,
+    threads: threads
+    shell:
+        construct_command_collapse(input, output_prefix, scriptdir, samples)
+
+###############################################################################
+# Rule: Map reads to reference databases
+###############################################################################
+
+rule map_reads:
+    input:
+        samples = sample_downstream,        
+        fastqfiles = map_input_fastq,
+        dbs=dbpaths,
+    output:
+        logfile=f'{output_prefix}/logs/map.log',
+        bamfiles=sample_bamfiles_merged,
+    threads: threads
+    shell:
+        """
+        {ribomarker_exec} \
+        --script mapReads -- \
+        --samples {input.samples} \
+        --threads {threads} \
+        --output {output_prefix} \
+        --dbs {input.dbs} \
+        --multimap {multimap} \
+        """
+
+
+###############################################################################
+# Rule: Create bedGraph files
+###############################################################################
+
+
+rule bam_to_bedgraph:
+    input:
+        bam = f"{output_prefix}/alignments/{{sample}}.bam",
+        featuretypes = f"{output_prefix}/{output_prefix}-featuretypes.csv",
+    output:
+        bedgraph = f"{output_prefix}/bedgraph/{{sample}}.bedgraph"
+    threads: threads
+    shell:
+        """
+        {ribomarker_exec} \
+        --script makeBedgraph -- \
+        --step coverage \
+        --input {input.bam} \
+        --output {output.bedgraph} \
+        --featuretypes {input.featuretypes} \
+        --keep-types {keep_types}
+        """
+
+
+
+
+
+###############################################################################
+# Rule: Parse mappings and generate read counts for feature counting
+###############################################################################
+
+rule parse_mappings:
+    input:
+        samples = sample_downstream,        
+        mergedbamfiles=sample_bamfiles_merged,
+        bedfile = bedfile,
+    output:
+        f'{output_prefix}/{output_prefix}-mappingstats.csv',
+        f'{output_prefix}/{output_prefix}-readcounts.csv',
+        f'{output_prefix}/{output_prefix}-typecounts.csv',
+        f'{output_prefix}/{output_prefix}-typelengths.csv',
+        f'{output_prefix}/{output_prefix}-featuretypes.csv',
+        bamfiles=sample_bamfiles,
+        bedgraph_full=bedgraph_full,
+    threads: threads
+    params:
+        unmapped_flag = "--unmapped" if dump_unmapped == True else "",
+        remove_mm_flag = "--remove-multimap" if remove_multimap else "",
+        remove_as_flag = "--remove-antisense" if remove_antisense else "",
+    shell:
+        """
+        {ribomarker_exec} \
+        --script parseMappings -- \
+        --samples {input.samples} \
+        --threads {threads} \
+        --output {output_prefix} \
+        --bed {input.bedfile} \
+        --bampath {output_prefix}/alignments \
+        -q \
+        {params.unmapped_flag} \
+        {params.remove_mm_flag} \
+        {params.remove_as_flag} \
+        """
+
+###############################################################################
+# Rule: Count RiboSpike reads for additional metrics
+###############################################################################
+rule count_ribospike:
+    input:
+        sample_bamfiles,
+        samples = sample_downstream,    
+    output:
+        ribospike_counts = f'{output_prefix}/ribospike/{output_prefix}-ribospike.csv',
+        ribospike = directory(f'{output_prefix}/ribospike'),
+    threads: threads
+    shell:
+        """
+        {ribomarker_exec} \
+        --script countRiboSpike -- \
+        -s {input.samples} \
+        -o {output_prefix} \
+        --threads {threads} \
+        --bampath {output_prefix}/alignments \
+        """
+
+        
+       
+       
+###############################################################################
+# Rule: Filter counts from multimap and antisense
+###############################################################################
+     
+# filter_counts removed: readcounts.csv is now filtered at source in parseMappings (design Z).
+        
+        
+###############################################################################
+# Rule: Filter bedgraph files
+###############################################################################
+      
+# filter_bedgraph removed: bedgraph is now built from the parsed BAM (CS tags) and already
+# respects remove_multimap/remove_antisense at source (design Z).
+
+
+###############################################################################
+# Rule: Collapse per-feature counts to a gene-level, mature-exonic matrix
+###############################################################################
+rule collapse_genes:
+    input:
+        readcounts   = f"{output_prefix}/{output_prefix}-readcounts.csv",
+        featuretypes = f"{output_prefix}/{output_prefix}-featuretypes.csv",
+    output:
+        f"{output_prefix}/{output_prefix}-genecounts.csv",
+        f"{output_prefix}/{output_prefix}-genelengths.csv",
+    shell:
+        """
+        {ribomarker_exec} \
+        --script collapseGenes -- \
+        --readcounts {input.readcounts} \
+        --featuretypes {input.featuretypes} \
+        --output {output_prefix}/{output_prefix}
+        """
+
+
+###############################################################################
+# Rule: QC collector
+###############################################################################
+# Reads the outputs of all other rules and writes qc_metrics.json and metrics_long.tsv.
+# run_config.yaml records the configuration as the pipeline resolved it (paired_end may
+# have been inferred from the sample sheet), so the collector sees the same values.
+
+rule qc_collect:
+    input:
+        get_pipeline_outputs
+    output:
+        metrics = f"{output_prefix}/qc/qc_metrics.json",
+        long = f"{output_prefix}/qc/metrics_long.tsv",
+        run_config = f"{output_prefix}/qc/run_config.yaml",
+    run:
+        resolved = dict(config)
+        resolved.update({"input_dir": input_dir, "dbdir": dbdir, "output_prefix": output_prefix,
+                         "species": species, "paired_end": bool(paired_end),
+                         "samples": config.get("samples", "samples.csv"),
+                         "collapse": collapse, "subsample_reads": subsample_amount,   # defaults as resolved above
+                         "remove_multimap": remove_multimap, "remove_antisense": remove_antisense,
+                         "count_ribospike": count_ribospike})
+        for key in ("host_input_dir", "host_assets_dir"):   # Docker launcher only: host paths of the user,
+            resolved.pop(key, None)                          # not needed by the collector, kept out of qc/
+        with open(output.run_config, "w") as f:
+            yaml.safe_dump(resolved, f, sort_keys=False)
+        shell("{ribomarker_exec} --script qcCollect -- --output {output_prefix} --config {output.run_config} "
+              "--qc-dir {PIPELINE_DIR}/qc --version-file {PIPELINE_DIR}/VERSION")
+
+###############################################################################
+# Rule: technical QC report (MultiQC)
+###############################################################################
+
+rule qc_report:
+    input:
+        f"{output_prefix}/qc/qc_metrics.json"
+    output:
+        f"{output_prefix}/qc/report_technical.html"
+    params:
+        # report title: set by the run command; the config route keeps the run folder name
+        title = f'--title "{config["report_title"]}"' if config.get("report_title") else ""
+    shell:
+        """
+        {ribomarker_exec} \
+        --script qcReport -- \
+        --output {output_prefix} \
+        --qc-dir {PIPELINE_DIR}/qc {params.title}
+        """

@@ -1,0 +1,13 @@
+# Made locally, not part of the repository
+docker/demo/
+docker/assets/*
+!docker/assets/MANIFEST_human.json
+!docker/assets/PROVENANCE_human.md
+!docker/assets/MANIFEST_mouse.json
+!docker/assets/PROVENANCE_mouse.md
+staging/
+results/
+test/synthetic_qc/work/
+.snakemake/
+__pycache__/
+*.pyc

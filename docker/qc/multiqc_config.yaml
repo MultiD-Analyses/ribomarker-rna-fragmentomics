@@ -1,0 +1,53 @@
+# MultiQC settings for the technical QC report (docker/scripts/qcReport.py).
+# The report title (the run id) and the logo file (logos/report_logos.png next to this file) are
+# passed on the command line. No subtitle and no intro text (report feedback 2026-10-06).
+intro_text: false
+custom_logo_title: "MultiD Analyses and RealSeq Biosciences"
+custom_logo_width: 320
+
+# Privacy: no analysis paths or times in the report.
+show_analysis_paths: false
+show_analysis_time: false
+
+# The report must work offline and must not contact any service.
+no_version_check: true
+no_ai: true
+
+# Sample names: cutadapt names samples after its input FASTQ files; use the report file name
+# (<sample>.trim.cutadapt.json) instead, so that all sections use the sample-sheet names.
+use_filename_as_sample_name: [cutadapt]
+extra_fn_clean_exts: [".trim.cutadapt"]
+
+# Our sections first, then the tool modules.
+module_order:
+  - custom_content
+  - fastp:
+      # MultiQC's fastp description without its last sentence ("Notably, the latter ...")
+      extra: >-
+        Fastp goes through fastq files in a folder and perform a series of quality control and filtering.
+        Quality control and reporting are displayed both before and after filtering, allowing for a clear
+        depiction of the consequences of the filtering process.
+  - cutadapt
+
+# Order of the RiboMarker sections (lowest first).
+report_section_order:
+  ribomarker_overview: {order: 1}
+  ribomarker_read_fate: {order: 2}
+  ribomarker_tiers: {order: 3}
+  ribomarker_composition: {order: 4}
+  ribomarker_multimapping: {order: 5}
+  ribomarker_lengths: {order: 6}
+  ribomarker_spike_table: {order: 7}
+  ribomarker_spike_offsets: {order: 8}
+  ribomarker_spike_recovery: {order: 9}
+  ribomarker_counts: {order: 10}
+  # Provenance is a section of its own at the end of the report, just above MultiQC's Software Versions
+  # (which lists the tool versions, from qc/mqc/ribomarker_mqc_versions.yml). MultiQC places higher
+  # values higher; 'after' gives the Software Versions value + 1, i.e. directly above it.
+  ribomarker_provenance: {after: multiqc_software_versions}
+
+# General statistics: only the RiboMarker columns are shown by default (headline numbers come
+# from the QC collector); the tool columns can be switched on with "Configure columns".
+table_columns_visible:
+  fastp: false
+  cutadapt: false

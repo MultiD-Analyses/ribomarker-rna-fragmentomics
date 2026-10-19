@@ -1,0 +1,15 @@
+Homo_sapiens_18S_1	10	1299	Homo_sapiens_18S_1	rRNA	+
+Homo_sapiens_tRNA-Ala-CGC-3	10	85	Homo_sapiens_tRNA-Ala-CGC-3	tRNA	+
+Homo_sapiens_tRNA-Leu-CAG-1	10	96	Homo_sapiens_tRNA-Leu-CAG-1	tRNA	+
+Homo_sapiens_tRNA-Leu-CAG-2	10	96	Homo_sapiens_tRNA-Leu-CAG-2	tRNA	+
+Hsa-Mir-21_5p	10	34	Hsa-Mir-21_5p	miRNA	+
+Hsa-Mir-21_3p*	10	32	Hsa-Mir-21_3p*	miRNA-star	+
+Hsa-Mir-21_pre	10	70	Hsa-Mir-21_pre	miRNA-pre	+
+piR-hsa-9	10	40	piR-hsa-9	piRNA	+
+ENST00001010609|BTG3	10	1991	BTG3	protein_coding	+
+ENST00001110240|MRPL39	10	2244	MRPL39	protein_coding	+
+ENST00000859953|ETS2	10	4152	ETS2	protein_coding	+
+ENST00000786877|H19	10	1332	H19	lncRNA	+
+21	30114	49956	ETS2_intron	pre-mRNA	+
+21	38000	38300	SYNTH-SNORD-minus	snoRNA	-
+21	60000	60300	SYNTH-LNC-edge	lncRNA	+

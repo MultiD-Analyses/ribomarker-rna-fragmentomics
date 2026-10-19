@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+###############################################################################
+# ribomarker: the RiboMarker pipeline in Docker, on the samples of a sample sheet.
+#
+#   ribomarker SHEET OUTPUT [options]    run the pipeline (SHEET: your sample sheet, a CSV file in the
+#                                        folder of the FASTQ files; OUTPUT: results)
+#   ribomarker --demo OUTPUT             test the installation (a few minutes)
+#   ribomarker --help                    all options
+#
+# Options: --threads N (default 8), --species NAME, --run-id NAME, --config FILE,
+# --references FOLDER, --unlock. Folders and files are your own paths; this script mounts them into
+# the container (the sheet's folder and the files read-only) and writes the docker run command.
+# Image: $RIBOMARKER_IMAGE (default dockermultid/ribomarker-rna-fragmentomics:0.1.0).
+###############################################################################
+set -euo pipefail
+
+IMAGE=${RIBOMARKER_IMAGE:-dockermultid/ribomarker-rna-fragmentomics:0.1.0}
+DOCKER=${RIBOMARKER_DOCKER:-docker}       # the tests put a stand-in here that prints the command
+DEFAULT_THREADS=8
+
+fail() { echo "ribomarker: $*" >&2; exit 2; }
+folder_path() { (cd "$1" && pwd -P); }                                   # absolute path of a folder
+file_path() { echo "$(folder_path "$(dirname "$1")")/$(basename "$1")"; }   # absolute path of a file
+
+docker_args=(run --rm --init --network none --user "$(id -u):$(id -g)")
+if [[ -t 0 && -t 1 ]]; then
+  docker_args+=(-it)                       # a terminal: live output, and Ctrl-C stops the run cleanly
+fi
+run_args=()
+paths=()
+demo=no; help=no; threads=$DEFAULT_THREADS
+
+while (( $# )); do
+  case $1 in
+    -h|--help) help=yes; shift ;;
+    --demo)    demo=yes; shift ;;
+    --unlock)  run_args+=(--unlock); shift ;;
+    --threads|--species|--run-id)
+      (( $# >= 2 )) || fail "$1 needs a value"
+      if [[ $1 == --threads ]]; then threads=$2; else run_args+=("$1" "$2"); fi
+      shift 2 ;;
+    --config)
+      (( $# >= 2 )) || fail "$1 needs a file"
+      [[ -f $2 ]] || fail "$1: file not found: $2"
+      name=$(basename "$2"); kind=${1#--}
+      docker_args+=(-v "$(file_path "$2"):/data/$kind/$name:ro")
+      run_args+=("$1" "/data/$kind/$name")
+      shift 2 ;;
+    --references)
+      (( $# >= 2 )) || fail "$1 needs a folder"
+      [[ -d $2 ]] || fail "$1: folder not found: $2"
+      docker_args+=(-v "$(folder_path "$2"):/data/references:ro")
+      run_args+=(--references /data/references)
+      shift 2 ;;
+    -*) fail "unknown option $1 (ribomarker --help lists the options)" ;;
+    *)  paths+=("$1"); shift ;;
+  esac
+done
+
+command -v "$DOCKER" > /dev/null || fail "Docker is not installed; see https://docs.docker.com/get-docker/"
+"$DOCKER" info > /dev/null 2>&1 || fail "Docker is not running; start Docker Desktop (or the Docker service) and try again"
+
+if [[ $help == yes ]]; then
+  echo "ribomarker SHEET OUTPUT [options]   (SHEET: your sample sheet, in the folder of the FASTQ files; OUTPUT: the results folder; default 8 threads)"
+  echo "ribomarker --demo OUTPUT            (test the installation)"
+  echo "The options are those of the pipeline's run command, with your own paths for files and folders:"
+  echo
+  exec "$DOCKER" run --rm "$IMAGE" run --help
+fi
+
+if [[ $demo == yes ]]; then
+  (( ${#paths[@]} == 1 )) || fail "usage: ribomarker --demo OUTPUT"
+  mkdir -p "${paths[0]}"
+  docker_args+=(-v "$(folder_path "${paths[0]}"):/data/output")
+  exec "$DOCKER" "${docker_args[@]}" "$IMAGE" run --demo /data/output --threads "$threads"
+fi
+
+(( ${#paths[@]} == 2 )) || fail "usage: ribomarker SHEET OUTPUT [options]  (ribomarker --help lists the options)"
+[[ -f ${paths[0]} ]] || fail "sample sheet not found: ${paths[0]}"
+sheet=$(file_path "${paths[0]}")
+input=$(dirname "$sheet")                  # the sheet's folder, with the FASTQ files
+existed=no; [[ -d ${paths[1]} ]] && existed=yes
+mkdir -p "${paths[1]}"                     # created here, so that it belongs to you and not to Docker
+output=$(folder_path "${paths[1]}")
+case "$output/" in
+  "$input/"*)
+    [[ $existed == yes ]] || rmdir "${paths[1]}"        # leave nothing behind in the input folder
+    fail "the output folder must not be the folder of the sample sheet or lie inside it" ;;
+esac
+docker_args+=(-v "$input:/data/input:ro" -v "$output:/data/output")
+exec "$DOCKER" "${docker_args[@]}" "$IMAGE" run "/data/input/$(basename "$sheet")" /data/output --threads "$threads" ${run_args[@]+"${run_args[@]}"}

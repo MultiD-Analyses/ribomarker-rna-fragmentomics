@@ -1,0 +1,17 @@
+RiboMarker: a pipeline for RNA fragmentomics
+Copyright (c) 2026 MultiD Analyses AB
+Portions Copyright (c) RealSeq Biosciences, Inc.
+
+The source code and documentation are licensed under the MIT License (see LICENSE).
+
+Not covered by the MIT License:
+
+- The logos in docker/qc/logos/ (multid_analyses.png, realseq_biosciences.png,
+  report_logos.png). They are included so that the QC report can show them, with
+  the permission of their owners; any other use requires the owner's permission.
+- The names "RiboMarker", "RealSeq" and "MultiD". The licence does not grant
+  permission to use these names, except as needed to describe the origin of the
+  software.
+
+Third-party software and reference data in the container image are under their
+own licences and terms: see THIRD_PARTY_NOTICES.md.

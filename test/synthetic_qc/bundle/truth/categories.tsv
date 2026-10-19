@@ -1,0 +1,36 @@
+id	what	n_S1	n_S2	n_S3	lost	mapping	removed	typecount	gene
+C01	adapter dimer (empty insert)	101	83	0	dimer				
+C02	10-nt insert (below the 15-nt minimum)	53	47	0	short				
+C03	150-nt BTG3 insert: paired-end mates do not overlap (not merged); single-end R1 maps	37	29	0	merge	unique		protein_coding	BTG3
+C04	spike-in, n reads for each of the 20 spikes	7	0	0		spike			
+C05	UniVec fragment (UniVec contigs are not in the BED)	29	31	0		unique		unannotated	
+C06	rRNA fragment	41	43	0		unique		rRNA	Homo_sapiens_18S_1
+C07	tRNA fragment, unique	47	53	0		unique		tRNA	Homo_sapiens_tRNA-Ala-CGC-3
+C08	tRNA fragment shared by Leu-CAG-1 and -2 (multimapper, removed)	31	37	0		multi	multimap		
+C09	mature miRNA, full length	59	61	0		unique		miRNA	Hsa-Mir-21_5p
+C10	piRNA, full length	43	41	0		unique		piRNA	piR-hsa-9
+C11	lncRNA fragment	61	67	0		unique		lncRNA	H19
+C12	mRNA fragment, ETS2	67	71	0		unique		protein_coding	ETS2
+C13	mRNA fragment, BTG3	71	73	0		unique		protein_coding	BTG3
+C14	mRNA fragment, ETS2, antisense (removed)	19	23	0		unique	antisense		
+C15	ETS2 gene body, not in the cDNA (pre-mRNA)	23	29	0		unique		pre-mRNA	
+C16	intergenic genome fragment	17	19	0		unique		unannotated	
+C17	random 30-nt sequence, absent from every reference	13	11	0		unmapped		unmapped	
+C18	15-nt MRPL39 fragment (exactly the minimum length)	11	13	0		unique		protein_coding	MRPL39
+C19	tRNA fragment exact to Leu-CAG-1, 1 mismatch to Leu-CAG-2: unique by best score (kept), two reported alignments (aligner-dependent)	23	19	0		unique		tRNA	Homo_sapiens_tRNA-Leu-CAG-1
+C20	mRNA fragment, MRPL39, 1 mismatch (Bowtie 2 tier)	17	13	0		unique		protein_coding	MRPL39
+C21	rRNA fragment, 1 mismatch (Bowtie 1 tier)	13	17	0		unique		rRNA	Homo_sapiens_18S_1
+C22	ETS2 gene body, plus strand, inside a minus-strand snoRNA: the higher-rank snoRNA is chosen whatever its strand (§6.1), so antisense (removed)	19	17	0		unique	antisense		
+C23	same snoRNA region, minus strand: sense to the snoRNA (kept)	15	21	0		unique		snoRNA	SYNTH-SNORD-minus
+C24	intergenic read whose last base is the first base of a lncRNA (1-nt overlap, removed by the 2-nt clipping, §6.1): unannotated	11	7	0		unique		unannotated	
+C25	intergenic read overlapping the same lncRNA by 5 nt: assigned to it	7	11	0		unique		lncRNA	SYNTH-LNC-edge
+C26	spike-in without its last base (offset -1: full-length, not exact), n per spike	2	0	0		spike			
+C27	spike-in without its first and last base (offset -2: full-length, not exact), n per spike	1	0	0		spike			
+C28	spike-in without its last 3 bases (offset -3: fragment), n per spike	1	0	0		spike			
+C29	20-nt internal piece of a 60-nt spike-in core (fragment), n per 60-nt spike	3	0	0		spike			
+C30	ETS2 fragment, all bases Phred 10: removed by fastp's quality filter in paired-end mode (fastp defaults); single-end has no quality filter and maps it	13	11	0	fastp	unique		protein_coding	ETS2
+C31	60-nt ETS2 fragment, first 6 bases N: removed by fastp's N filter in paired-end mode (fastp defaults); single-end maps it (6 N within Bowtie 2's default N ceiling, aligner-dependent)	9	7	0	fastp	unique		protein_coding	ETS2
+C32	16-nt BTG3 fragment, exact (control)	0	0	20		exploratory			BTG3
+C33	16-nt ETS2 fragment, 1 mismatch at position 9	0	0	20		exploratory			ETS2
+C34	17-nt MRPL39 fragment, 1 mismatch at position 9	0	0	20		exploratory			MRPL39
+C35	17-nt H19 fragment, exact (control)	0	0	20		exploratory			H19
