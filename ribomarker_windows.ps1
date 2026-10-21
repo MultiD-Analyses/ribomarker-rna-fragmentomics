@@ -10,11 +10,11 @@ Started by ribomarker.cmd, so that PowerShell's script setting (execution policy
 Options: --threads N (default 8), --species NAME, --run-id NAME, --config FILE,
 --references FOLDER, --unlock. Folders and files are your own paths; this script mounts them into
 the container (the sheet's folder and the files read-only) and writes the docker run command.
-Image: $env:RIBOMARKER_IMAGE (default dockermultid/ribomarker-rna-fragmentomics:0.1.0). Same behaviour as the
+Image: $env:RIBOMARKER_IMAGE (default dockermultid/ribomarker-rna-fragmentomics:0.2.0). Same behaviour as the
 bash script ribomarker (Linux, macOS, WSL).
 #>
 $ErrorActionPreference = 'Stop'
-$Image = if ($env:RIBOMARKER_IMAGE) { $env:RIBOMARKER_IMAGE } else { 'dockermultid/ribomarker-rna-fragmentomics:0.1.0' }
+$Image = if ($env:RIBOMARKER_IMAGE) { $env:RIBOMARKER_IMAGE } else { 'dockermultid/ribomarker-rna-fragmentomics:0.2.0' }
 $Docker = if ($env:RIBOMARKER_DOCKER) { $env:RIBOMARKER_DOCKER } else { 'docker' }
 
 function Fail($message) {

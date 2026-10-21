@@ -8,7 +8,7 @@ here. The builder reads this folder via `--inputs` (default: `buildDB/inputs/`).
 
 | File | What it is | Used for | Notes |
 |------|-----------|----------|-------|
-| `ribospike.fa` | The synthetic RiboSpike spike-in sequences (FASTA) | Builds the `ribospike` bowtie2 index (`ribospikebt2`) | Must be the **same** spike-in reference the wet-lab used. Not downloadable. You currently have this as `assets/ribospike.fa` in the repo — copy that file here (do **not** point the builder at `assets/`). |
+| `ribospike.fa` | The synthetic RiboSpike spike-in sequences (FASTA) | Builds the `ribospike` bowtie2 index (`ribospikebt2`) | Must be the **same** spike-in reference the wet-lab used. Not downloadable. Already in this folder. |
 
 That is the only required input for the default build.
 
@@ -28,5 +28,5 @@ pipeline does not consume it. If you turn it on, you also need:
 ## What must NOT go here
 
 Everything else (genome, GTF, tRNA tarball, miRNA, piRNA, rRNA, UniVec) is
-downloaded by the script and recorded in `assets_v1/MANIFEST.json`. Do not stage
+downloaded by the script and recorded in `MANIFEST_<species>.json` of the output folder. Do not stage
 those manually — that would defeat the provenance tracking.

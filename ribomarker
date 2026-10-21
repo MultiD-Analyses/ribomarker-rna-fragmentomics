@@ -10,11 +10,11 @@
 # Options: --threads N (default 8), --species NAME, --run-id NAME, --config FILE,
 # --references FOLDER, --unlock. Folders and files are your own paths; this script mounts them into
 # the container (the sheet's folder and the files read-only) and writes the docker run command.
-# Image: $RIBOMARKER_IMAGE (default dockermultid/ribomarker-rna-fragmentomics:0.1.0).
+# Image: $RIBOMARKER_IMAGE (default dockermultid/ribomarker-rna-fragmentomics:0.2.0).
 ###############################################################################
 set -euo pipefail
 
-IMAGE=${RIBOMARKER_IMAGE:-dockermultid/ribomarker-rna-fragmentomics:0.1.0}
+IMAGE=${RIBOMARKER_IMAGE:-dockermultid/ribomarker-rna-fragmentomics:0.2.0}
 DOCKER=${RIBOMARKER_DOCKER:-docker}       # the tests put a stand-in here that prints the command
 DEFAULT_THREADS=8
 

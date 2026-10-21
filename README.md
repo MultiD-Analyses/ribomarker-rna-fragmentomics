@@ -6,7 +6,7 @@ The RiboMarker pipeline turns small-RNA sequencing reads (FASTQ files) into:
 - **per-transcript coverage** files (bedgraph),
 - a **technical QC report** (one HTML file) with every step's numbers and consistency checks.
 
-It is made for libraries prepared with the RiboMarker small-RNA protocol of RealSeq Biosciences and for **human** or **mouse** samples (for mouse, see the [known limitations](USER_GUIDE.md#9-known-limitations)). It runs in Docker; one command starts it ([installation](USER_GUIDE.md#2-installation)). The pipeline stops at counts and coverage: it applies no normalization and no statistics.
+It is made for libraries prepared with the RiboMarker small-RNA protocol of RealSeq Biosciences and for **human** or **mouse** samples. It runs in Docker. The pipeline stops at counts and coverage: it applies no normalization and no downstream statistics.
 
 Full documentation: **[USER_GUIDE.md](USER_GUIDE.md)**.
 
@@ -42,11 +42,11 @@ Details: [How the pipeline works](USER_GUIDE.md#8-how-the-pipeline-works).
 
 ## Quick start
 
-**1. Install Docker** and start it. On Windows, use Docker Desktop with the WSL2 backend.
+**1. Install Docker** and start it. On Windows, use Docker Desktop with the WSL2 backend. Docker: https://docs.docker.com/get-docker/
 
-**2. Get the starter.** Download this repository (*Code → Download ZIP*, or the source archive of a release) and unzip it. The starter scripts are at its top level: `ribomarker` (Linux, macOS, Windows WSL shell) and `ribomarker.cmd` with `ribomarker_windows.ps1` (Windows PowerShell or command prompt; keep the two together). The starter writes the `docker run` command for you; Docker downloads the image the first time.
+**2. Get the starter.** Download this repository (*Code → Download ZIP*) and unzip it. The starter scripts are at its top level: `ribomarker` (Linux, macOS, Windows WSL shell) and `ribomarker.cmd` with `ribomarker_windows.ps1` (Windows PowerShell or command prompt; keep the two together). The starter writes the `docker run` command for you; Docker downloads the image the first time.
 
-**3. Test the installation** (a few minutes; synthetic reads whose results are known):
+**3. Test the installation** (about 15-30 minutes including the image download):
 
 ```bash
 ./ribomarker --demo results/demo            # Linux, macOS, Windows WSL shell
@@ -55,14 +55,14 @@ Details: [How the pipeline works](USER_GUIDE.md#8-how-the-pipeline-works).
 .\ribomarker --demo results\demo            # Windows PowerShell
 ```
 
-It ends with `DEMO PASSED: all … known results reproduced`.
+The demo runs the pipeline with a couple of synthetic reads whose results are known. It ends with `DEMO PASSED: all … known results reproduced`.
 
 **4. Run your data.** Put the FASTQ files (`.fastq.gz`) into one folder, together with a sample sheet, a CSV file with one row per sample (more columns, e.g. clinical data, are allowed and copied to the results):
 
 ```
-sample,fastq_file,fastq_file2
-Healthy_1,H1_R1.fastq.gz,H1_R2.fastq.gz
-Patient_7,P7_R1.fastq.gz,P7_R2.fastq.gz
+sample,fastq_file,fastq_file2,group,age,sex
+Healthy_1,H1_R1.fastq.gz,H1_R2.fastq.gz,Healthy,25,M
+Patient_1,P1_R1.fastq.gz,P1_R2.fastq.gz,Sick,27,F
 ```
 
 Leave out `fastq_file2` for single-end reads. Then:
@@ -74,7 +74,7 @@ Leave out `fastq_file2` for single-end reads. Then:
 .\ribomarker C:\data\fastq\samples.csv C:\data\results  # Windows PowerShell
 ```
 
-The FASTQ folder is only read; the results go into the second folder. The sample names of the sheet are used in all results ([rules](USER_GUIDE.md#3-inputs)). The run ends with one line, `RESULTS VALID` or `RESULTS NOT VALID`, and the path of the QC report. `./ribomarker --help` lists the options. If `./ribomarker` says *permission denied*, run `chmod +x ribomarker` once.
+The pipeline reads the FASTQ files based on the sample sheet and returns results into the second folder. The sample names of the sheet are used in all results. The run ends with one line, `RESULTS VALID` or `RESULTS NOT VALID`, and the path of the QC report. `./ribomarker --help` lists the options. If `./ribomarker` says *permission denied*, run `chmod +x ribomarker` once.
 
 ## What you get
 
@@ -116,19 +116,21 @@ All options and settings, with their effects: [user guide §4.3 and §5](USER_GU
 
 ## Own references
 
-The built-in references can be replaced by your own, for example another miRNA or piRNA database, an extra spike-in, references of another species (`--species rat` with your own `rat` files), or another priority order (the order is the line order of one small file):
+The built-in references can be replaced by your own, for example another miRNA or piRNA database, an extra spike-in, references of another species (`--species rat` with your own `rat` files):
 
 ```bash
 ./ribomarker ~/data/fastq/samples.csv ~/data/results --references ~/my_references
 ```
 
-The folder holds the Bowtie indexes, a list of them in priority order, and a BED file with the features and their RNA types. The easiest start is a copy of the built-in references, changed one reference at a time. Format and caveats: [user guide, *Own references*](USER_GUIDE.md#own-references); building references from their original sources: [`buildDB/`](buildDB/README.md). Own references have not been validated by us: check the QC report of the run.
+The folder holds the Bowtie indexes, a list of them in priority order, and a BED file with the features and their RNA types. The easiest start is a copy of the built-in references, changed one reference at a time. Format and caveats: [user guide, *Own references*](USER_GUIDE.md#own-references); building references from their original sources: [`buildDB/`](buildDB/README.md).
 
 ## Citing
 
 If you use the pipeline, please cite this repository, with the version you used (shown in the QC report and in `run_status.json`):
 
-> Smelik M. RiboMarker: a pipeline for RNA fragmentomics, version X.Y.Z. MultiD Analyses AB; 2026. https://github.com/MultiD-Analyses/ribomarker-rna-fragmentomics
+> Smelik M. RiboMarker: a pipeline for RNA fragmentomics, version X.Y.Z. MultiD Analyses AB; 2026. https://doi.org/10.5281/zenodo.23475622
+
+The DOI above stands for all versions (Zenodo); each version also has its own DOI, listed on the Zenodo record. Code: https://github.com/MultiD-Analyses/ribomarker-rna-fragmentomics
 
 The *Cite this repository* button on GitHub (from [CITATION.cff](CITATION.cff)) gives this citation in APA and BibTeX. Please also cite the method:
 

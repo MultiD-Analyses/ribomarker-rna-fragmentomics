@@ -197,7 +197,7 @@ class CountRiboSpike(object):
 
         if self.args.unmapped:
             unmapped_df = pd.DataFrame(list(unmap_sequences.items()), columns=['sequence', sample]).set_index('sequence').T
-            unmapped_df = unmapped_df.T.sort_values(sample, ascending=False)
+            unmapped_df = unmapped_df.T.sort_values(sample, ascending=False, kind='stable')
 
         ## flatten the end dictionaries
         end_df = self.ends_table(sample, ribospike_end_dict)

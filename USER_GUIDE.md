@@ -30,13 +30,13 @@ The pipeline processes small-RNA sequencing reads (single- or paired-end FASTQ f
 - **per-transcript coverage** files (bedgraph): how many reads cover each position of each transcript;
 - a **technical QC report**: every step's numbers, with consistency checks between the steps.
 
-The pipeline stops there. It applies **no normalization** and no statistics; the gene counts are integer counts, suitable for count-based differential-expression tools.
+The pipeline stops there. It applies no normalization and no statistics; the gene counts are integer counts, suitable for count-based differential-expression tools.
 
 Scope of this version:
 
 - **Library protocol:** RiboMarker (RealSeq) only. The adapter sequences and the removal of one extra base at the insert's 5′ end are fixed for this protocol (§8).
 - **Species:** human (default) and mouse (`--species mouse`). The references of both are built into the image (§8, *References*); other species with your own references (§5, *Own references*). For mouse, the mouse references were checked on synthetic reads cut from them (every read lands on its own reference), but no result on real mouse data has been compared yet; the QC report of a mouse run says so (§9).
-- **Systems:** the image is built for x86-64 (Intel/AMD). It has been tested on Windows (PowerShell and WSL2) and on Linux under WSL2; not yet on a native Linux installation. macOS has not been tested; on Apple-silicon Macs Docker runs x86-64 images under emulation, which is slower.
+- **Systems:** the image is built for x86-64 (Intel/AMD). It has been tested on Windows (two computers; PowerShell and WSL2), on Linux under WSL2, and on macOS on an Intel Mac (§8, *Versions and reproducibility*). Not tested: a native Linux installation, and Apple-silicon Macs (M1 and later), where Docker runs x86-64 images under emulation, which is slower.
 
 ## 2. Installation
 
@@ -45,6 +45,7 @@ Scope of this version:
 | | |
 |---|---|
 | Docker | Docker Desktop (Windows, macOS) or Docker Engine (Linux), installed and running |
+| Docker Desktop licence | Free for companies with fewer than 250 employees and less than US$10 million annual revenue, and for non-commercial open-source projects; other companies and public bodies need a paid Docker subscription ([Docker pricing FAQ](https://www.docker.com/pricing/faq/)). The condition is Docker's, for Docker Desktop; it does not concern the pipeline (MIT licence). |
 | Memory | 12 GB available to Docker. The peak grows with sample size: with 8 threads, a paired-end run of 2 samples (0.30 GB of R1 files) peaked at 4.1 GB, one of 6 samples (1.72 GB, the largest sample 0.67 GB) at 8.1 GB. `run` warns when less than 12 GB is available. Docker Desktop gives containers part of the computer's memory: check *Settings → Resources*. |
 | Disk | about 21 GB for the image, as Docker Desktop reports it (human and mouse references); per run about 3 × the size of the FASTQ files + 1 GB (checked before the run starts) |
 | Time | about 2–3 hours per GB of R1 FASTQ files with 8 threads. Two measurements on one laptop: 37–41 min for 2 samples (0.30 GB of R1 files), and 4 h 41 min for 6 samples (1.72 GB) through the Windows starter. It depends on the computer and the samples; samples are processed one after another. |
@@ -53,7 +54,7 @@ Scope of this version:
 
 - **Linux:** install Docker Engine (or Docker Desktop) and start it. Your user must be allowed to run Docker (the `docker` group, or `sudo`).
 - **Windows:** install Docker Desktop with the **WSL2 backend**. You can then use either **PowerShell** with Windows paths (`C:\data\...`), or a **WSL shell** (e.g. Ubuntu from the Microsoft Store, with Docker's WSL integration switched on under *Settings → Resources → WSL integration*) with Linux paths (`/mnt/c/data/...`). In the WSL shell, if commands fail with "No such file or directory" after a run, `cd` into your folder again by its full path.
-- **macOS (not tested):** install and start Docker Desktop and use Terminal with paths such as `/Users/you/data`. Docker Desktop shares your home folder by default; other locations may need adding under *Settings → Resources → File sharing*.
+- **macOS (tested on an Intel Mac):** install and start Docker Desktop and use Terminal with paths such as `/Users/you/data`. On Apple-silicon Macs (not tested), Docker runs the x86-64 image under emulation, which is slower. Give Docker at least 12 GB of memory (*Settings → Resources*). Docker Desktop shares your home folder by default; other locations may need adding under *Settings → Resources → File sharing*.
 
 ### 2.3 The starter
 
@@ -80,9 +81,9 @@ The demo runs synthetic paired-end reads whose results are known at every step (
 The input is a **sample sheet**: a CSV file in the folder of the FASTQ files, with one row per sample.
 
 ```
-sample,fastq_file,fastq_file2,age,group
-Healthy_1,H1_R1.fastq.gz,H1_R2.fastq.gz,54,control
-Patient_7,P7_R1.fastq.gz,P7_R2.fastq.gz,61,case
+sample,fastq_file,fastq_file2,group,age,sex
+Healthy_1,H1_R1.fastq.gz,H1_R2.fastq.gz,Healthy,25,M
+Patient_1,P1_R1.fastq.gz,P1_R2.fastq.gz,Sick,27,F
 ```
 
 ### 3.1 Columns
@@ -120,6 +121,8 @@ The column names are written exactly as above, in any order. The sheet may be co
 - runs the container without network access (`--network none`), removes it afterwards (`--rm`), and lets Ctrl-C stop a run cleanly (`--init`; `-it` in a terminal);
 - on Linux, macOS and WSL, runs as your user (`--user`), so the results belong to you;
 - refuses an output folder inside the sheet's folder, and says so when Docker is not installed or not running.
+
+Folder paths with spaces (e.g. `C:\Users\First Last\data`) work through the starters; tested with the Windows starter. Without Docker (§10) they do not.
 
 ### 4.2 With `docker run`
 
@@ -181,6 +184,8 @@ The run ends with one line:
 - `RESULTS NOT CHECKED`: the QC report was switched off (`qc_report: False`, §5); exit status 0.
 
 Exit status: `0` results valid (or not checked); `1` the pipeline failed or the results are not valid; `2` refused before starting; `130` interrupted.
+
+The output of the mapping step may contain `[WARNING] Failed to launch x86-64-v3 version, staying with default`: a program looks for a build optimised for newer processors and uses its standard build instead. It does not affect the results; it appeared on every computer we tested.
 
 ### 4.6 Stopping and resuming
 
@@ -319,7 +324,7 @@ The image contains the human (GRCh38) and mouse (GRCm39) references with their B
 
 ### Versions and reproducibility
 
-The pipeline version is in [`docker/VERSION`](docker/VERSION); the git tag `v<version>` and the image tag `<version>` are the same. Each run records the version, the git commit, a fingerprint of the code and the reference build in `run_status.json` and in the QC report. The same image (by digest) with the same references gives the same results; the image digest of each release is in its release notes.
+The pipeline version is in [`docker/VERSION`](docker/VERSION); the git tag `v<version>` and the image tag `<version>` are the same. Each run records the version, the git commit, a fingerprint of the code and the reference build in `run_status.json` and in the QC report. What was tested: the same image (by digest), the same references and the same `--threads` gave identical results in repeated runs on one computer, between a local (conda) and a Docker run, and, from version 0.2.0, between two computers (a Windows laptop and an Intel Mac, two full samples: identical alignments, and identical tables, coverage files and assigned alignments of the read assignment). Compared were the count and statistics tables, the coverage files, `metrics_long.tsv` of the QC report and the records of the BAM files; not compared were logs, the HTML report (it holds the run date) and fastp's duplication estimate, which can differ in the sixth decimal between identical runs (the pipeline does not use it). Not tested: Apple-silicon Macs, and other thread counts than 8. Version 0.1.0 is reproducible on one computer, but between computers about 0.03 % of the reads could be assigned to another feature, all on pre-mRNA intron features, with an identical gene table (§9). The image digest of each release is in its release notes.
 
 ## 9. Known limitations
 
@@ -328,7 +333,7 @@ Read these before interpreting results.
 - **RNA type depends on the tier order.** A read is assigned to the first reference it aligns to (§8), so the boundaries between RNA types (e.g. piRNA, lncRNA, protein-coding) partly reflect the order of the references, not only biology.
 - **Chance alignment of short reads.** Reads of 15–17 nt can align by chance to the large ncRNA and cDNA references before they reach the genome tier, and are then counted as lncRNA or mRNA. Under a uniform-random model, a 15-nt read has about an 11 % chance of an exact match somewhere in the 62.5 Mb cDNA reference, and nearly 100 % if one mismatch is allowed; at 20 nt about 0.01 % and 0.7 %. These are model estimates, not measurements. The QC report shows the 15–17 nt share per RNA type.
 - **Strand-agnostic feature lookup in the genome tier.** Features of reads assigned in the genome tier are looked up without regard to strand, which affects the sense/antisense labels and counts of pre-mRNA and pre-tRNA features.
-- **Equal-rank overlapping features.** When a read overlaps two features of the same rank, which one wins is not specified (an unstable sort). In our tests outputs were identical between runs and between local and Docker runs, and the order affected a few reads per sample; whether it is the same with other package versions or CPUs is not established.
+- **Equal-rank overlapping features.** When a read overlaps two features of the same rank, the feature listed first in the reference BED file wins (from version 0.2.0). The rule is technical, not biological: because the feature lookup in the genome tier ignores the strand (item above), it also decides whether such a read counts as sense (kept) or antisense (removed), so the later-listed feature loses these reads. Few reads are concerned: changing from the rule of version 0.1.0 moved 64 and 187 reads (0.005–0.006 %) of two full samples, all on pre-mRNA intron features, with an unchanged gene table. In version 0.1.0 the winner depended on the computer's processor (an unstable sort): between two computers about 0.03 % of the reads differed, all on pre-mRNA intron features, with an identical gene table.
 - **Strand-specific libraries assumed.** The sense/antisense distinction assumes a strand-specific library.
 - **Multimappers.** By default multimappers are left out of the counts. With `remove_multimap: False`, each multimapper is placed at one locus by a deterministic but arbitrary tie-break; no fractional or EM-based assignment is done. In `bedgraph_full/`, `multimap_depth` shows how much depth comes from multimappers.
 - **UniVec and rRNA report one alignment** (Bowtie 1), so multimapping within these references is resolved by the aligner and does not appear in `multimap_depth` or in the multimapper counts.

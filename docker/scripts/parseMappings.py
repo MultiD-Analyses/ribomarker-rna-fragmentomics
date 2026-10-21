@@ -55,6 +55,13 @@ def find_region(starts, ends, read_start, read_end):
     return -1  # Indicate no overlap was found
 
 
+def sort_by_rank(bed, genetype_hierarchy):
+    """The BED rows from the highest-ranked biotype down (genetype_hierarchy: biotype -> rank, unknown 0).
+    Rows of equal rank keep their order in the BED file (stable sort), so the same feature wins a tie on every
+    computer: numpy's default quicksort orders ties differently on different CPUs (found for release 0.2.0)."""
+    order = bed['biotype'].map(genetype_hierarchy).fillna(0)
+    return bed.assign(order=order).sort_values(by='order', ascending=False, kind='stable').drop(columns='order')
+
 
 class ParseMappings(object):
 
@@ -213,11 +220,8 @@ class ParseMappings(object):
             for i in other_biotypes:
                 genetype_hierarchy[i] = 10
 
-        ## assign a sorting order to each feature based on the genetype_hierarchy
-        bed['order'] = bed['biotype'].map(genetype_hierarchy).fillna(0)
-
-        ## sort the bed file based on the sorting order
-        bed = bed.sort_values(by=['order'], ascending=False).drop(columns=['order'])
+        ## sort the bed file by rank; equal ranks keep the BED order
+        bed = sort_by_rank(bed, genetype_hierarchy)
 
         ## group the bed file by chromosome
         bed = bed.groupby('chrom')
@@ -551,7 +555,7 @@ class ParseMappings(object):
         read_featuretypes_df = pd.DataFrame(read_feature_biotypes, index=read_features, columns=['feature_type']).reset_index().rename(columns={'index':'feature'})
 
         ## get a list of sorted biotypes by the count in biotype_df
-        sorted_biotypes = read_biotype_df.sort_values(by=sample, ascending=False).index.tolist()
+        sorted_biotypes = read_biotype_df.sort_values(by=sample, ascending=False, kind='stable').index.tolist()
 
         read_biotype_df = read_biotype_df.loc[sorted_biotypes]
 
@@ -903,11 +907,8 @@ class ParseMappings(object):
             for i in other_biotypes:
                 genetype_hierarchy[i] = 10
 
-        ## assign a sorting order to each feature based on the genetype_hierarchy
-        bed['order'] = bed['biotype'].map(genetype_hierarchy).fillna(0)
-
-        ## sort the bed file based on the sorting order
-        bed = bed.sort_values(by=['order'], ascending=False).drop(columns=['order'])
+        ## sort the bed file by rank; equal ranks keep the BED order
+        bed = sort_by_rank(bed, genetype_hierarchy)
 
         ## group the bed file by chromosome
         bed = bed.groupby('chrom')
@@ -1255,7 +1256,7 @@ class ParseMappings(object):
             unmap_sequences_df = pd.DataFrame.from_dict(unmap_sequences, orient='index').reset_index().rename(columns={'index':'sequence', 0:'count'})
             ## get the % of the total
             unmap_sequences_df['%'] = unmap_sequences_df['count'] / unmap_sequences_df['count'].sum() * 100
-            unmap_sequences_df = unmap_sequences_df.sort_values(by='count', ascending=False).head(100)
+            unmap_sequences_df = unmap_sequences_df.sort_values(by='count', ascending=False, kind='stable').head(100)
             unmap_sequences_df.to_csv(f'{bampath}{sample}-unmappedtop100.csv')
             del unmap_sequences
 
@@ -1280,7 +1281,7 @@ class ParseMappings(object):
         read_featuretypes_df = pd.DataFrame(read_feature_biotypes, index=read_features, columns=['feature_type']).reset_index().rename(columns={'index':'feature'})
 
         ## get a list of sorted biotypes by the count in biotype_df
-        sorted_biotypes = read_biotype_df.sort_values(by=sample, ascending=False).index.tolist()
+        sorted_biotypes = read_biotype_df.sort_values(by=sample, ascending=False, kind='stable').index.tolist()
 
         read_biotype_df = read_biotype_df.loc[sorted_biotypes]
 
@@ -1512,7 +1513,7 @@ def main():
                     biotypedistseqs_data.append(data[6])
 
         ## write the feature stats to a file
-        feature_df = pd.concat(feature_data, axis=1).fillna(0).astype(int).sort_index()
+        feature_df = pd.concat(feature_data, axis=1).fillna(0).astype(int).sort_index(kind='stable')
 
         ## get the RiboSpike reads
         ribospike_df = feature_df.filter(like='RiboSpike', axis=0)
@@ -1523,7 +1524,7 @@ def main():
 
         length_df = pd.concat(length_data, axis=0).fillna(0)
 
-        featuretypes = pd.concat(featuretype_data, axis=0).drop_duplicates(subset=['feature']).sort_values(by='feature')
+        featuretypes = pd.concat(featuretype_data, axis=0).drop_duplicates(subset=['feature']).sort_values(by='feature', kind='stable')
         featuretypes = add_gene_length(featuretypes, args.bed)
 
         mappability_df = pd.concat(mapdata, axis=1).fillna(0).T
@@ -1572,7 +1573,7 @@ def main():
                     mapdata.append(data[4])
 
         ## write the feature stats to a file
-        feature_df = pd.concat(feature_data, axis=1).fillna(0).astype(int).sort_index()
+        feature_df = pd.concat(feature_data, axis=1).fillna(0).astype(int).sort_index(kind='stable')
 
         ## get the RiboSpike reads
         ribospike_df = feature_df.filter(like='RiboSpike', axis=0)
@@ -1583,7 +1584,7 @@ def main():
 
         length_df = pd.concat(length_data, axis=0).fillna(0)
 
-        featuretypes = pd.concat(featuretype_data, axis=0).drop_duplicates(subset=['feature']).sort_values(by='feature')
+        featuretypes = pd.concat(featuretype_data, axis=0).drop_duplicates(subset=['feature']).sort_values(by='feature', kind='stable')
         featuretypes = add_gene_length(featuretypes, args.bed)
 
         mappability_df = pd.concat(mapdata, axis=1).fillna(0).T

@@ -516,11 +516,11 @@ class TrimReads():
         sample_quality_df['max'] = sample_quality_df['stats'].apply(lambda x: x['max'])
         sample_quality_df = sample_quality_df.drop(columns=['stats'])
 
-        sample_lengths_df = pd.DataFrame(list(read_lengthD.items()), columns=['length', 'count']).sort_values('length')
+        sample_lengths_df = pd.DataFrame(list(read_lengthD.items()), columns=['length', 'count']).sort_values('length', kind='stable')
         sample_lengths_df['percent'] = (sample_lengths_df['count'] / sum(sample_lengths_df['count'])) * 100
         sample_lengths_df['cumulative_percent'] = sample_lengths_df['percent'].cumsum()
 
-        sample_sequences_df = pd.DataFrame(list(read_topSeqD.items()), columns=['sequence', 'count']).sort_values('count', ascending=False)
+        sample_sequences_df = pd.DataFrame(list(read_topSeqD.items()), columns=['sequence', 'count']).sort_values('count', ascending=False, kind='stable')
         sample_sequences_df['percent'] = (sample_sequences_df['count'] / sum(sample_sequences_df['count'])) * 100
         sample_sequences_df['cumulative_percent'] = sample_sequences_df['percent'].cumsum()
         sample_sequences_df = sample_sequences_df.head(100)

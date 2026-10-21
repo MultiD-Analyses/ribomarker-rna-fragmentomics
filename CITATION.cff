@@ -11,6 +11,7 @@ authors:
     family-names: Smelik
     affiliation: MultiD Analyses AB
 license: MIT
+doi: 10.5281/zenodo.23475622
 repository-code: "https://github.com/MultiD-Analyses/ribomarker-rna-fragmentomics"
 url: "https://github.com/MultiD-Analyses/ribomarker-rna-fragmentomics"
 keywords:

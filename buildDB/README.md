@@ -1,124 +1,55 @@
-# buildDB — versioned, provenance-first reference builder
+# buildDB: building the reference databases
 
-Standalone tooling to build the mapping reference databases (`assets_v?`) for the
-fragmentomics pipeline. It is **deliberately independent of the Snakemake
-pipeline**: the pipeline only ever *consumes* prebuilt assets; this folder is how
-those assets are *made*, with a full record of when, from where, and which
-version each database came from.
+These scripts build the references that the pipeline maps reads to: the Bowtie indexes, the BED file of features, and the list of mapping tiers in priority order (`<species>.dbpaths.csv`), together with a record of where every source came from (`MANIFEST_<species>.json`, `PROVENANCE_<species>.md`). The pipeline never runs them: it only uses finished references, built into the container image or given with `--references`.
 
-## Why versioned
+Most users do not need this folder: the human and mouse references are built into the image. It is for rebuilding references from their sources, for building references of another species, and for reviewing how the published references were made.
 
-Each build is tied to a numbered script:
+## The published references
 
-- `buildDB_v1.py` → produces `assets_v1/`
-- to refresh later: copy to `buildDB_v2.py`, bump the URLs/versions in `SOURCES`,
-  run it → `assets_v2/`. Old versions stay frozen and auditable.
+| Species | Built | Sources | Built with |
+|---|---|---|---|
+| human (GRCh38) | 2026-07-07 | Ensembl 116, GtRNAdb2 hg38, MirGeneDB 3.0, piRBase v3.0 (gold set), miRTrace rRNA, NCBI UniVec | an earlier version of `buildDB_v1.py` that was not archived (its checksum is in the MANIFEST) |
+| mouse (GRCm39) | 2026-10-08 | Ensembl 116, GtRNAdb2 mm39, MirGeneDB 3.0, piRBase v3.0 (gold set), miRTrace rRNA, NCBI UniVec | `buildDB_v1.py` and `builder_core.py` as published, apart from comments |
 
-## Layout
+Exact URLs, download times, tool versions and checksums: [`docker/assets/PROVENANCE_<species>.md`](../docker/assets/) and `MANIFEST_<species>.json`. Sources, citations and terms: [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
-```
-buildDB/
-  buildDB_v1.py     # driver: pinned SOURCES + downloads + provenance (edit per version)
-  builder_core.py   # the index-building steps (kept format-compatible with the pipeline)
-  inputs/           # non-downloadable inputs you provide (see inputs/README.md)
-  README.md         # this file
-```
-
-Output (created by running the script, at repo root, next to `assets/`):
-
-```
-assets_v1/
-  univec/ ribospike/ rrna/ trna/ mirna/ pirna/ gtf/ genome/   # the indices
-  human.bed
-  human.dbpaths.csv           # mapping tiers; index paths relative to this folder (local and Docker)
-  MANIFEST_human.json         # per-DB: url, version, timestamp, sha256, tool versions;
-                              # sha256 and size of the dbpaths file, the BED and every index file
-  PROVENANCE.md               # human-readable manifest
-```
-
-## Quickstart
+## Rebuilding
 
 ```bash
+conda activate ribomarker        # the environment of docker/env.lock.txt has every tool the build needs
 cd buildDB
-
-# 1) confirm every source URL is alive and show the pinned versions (no big downloads)
-python buildDB_v1.py --species human --check-urls
-
-# 2) put ribospike.fa in ./inputs (see inputs/README.md), then build
-python buildDB_v1.py --species human --inputs ./inputs --output ../assets_v1 --threads 8
+python buildDB_v1.py --species human --check-urls     # are all sources still online? (no large downloads)
+python buildDB_v1.py --species human --inputs ./inputs --output ../my_references --threads 8
 ```
 
-**Dependencies** — on PATH: `bowtie-build` (bowtie v1), `bowtie2-build`, `tar`,
-`gunzip`. Python: `pandas`, `biopython`, `pysam`. (The `ribomarker` conda env
-already has these.)
+- The build downloads the genome and annotation and builds the indexes; it takes hours. The finished human and mouse folders hold about 8.6 GB together.
+- [`inputs/`](inputs/README.md) holds the one file that cannot be downloaded: the RiboSpike spike-in sequences (`ribospike.fa`).
+- Build each species into its own **empty** folder: the builder always rebuilds the indexes shared by all species (UniVec, RiboSpike) and writes intermediate files without a species prefix. `install_species.py` copies one species from such a folder into a folder that already holds another species, as `docker/assets` does.
+- Tools used: `bowtie-build` (Bowtie 1, for UniVec and rRNA), `bowtie2-build` (all other tiers), `tar`, `gunzip`; Python packages `pandas`, `biopython`, `pysam`.
 
-## Using assets_v1 with the pipeline
+**A rebuild is not guaranteed to equal the published references.** The script downloads the files as they are today: NCBI UniVec has no version, the rRNA file comes from the `master` branch of miRTrace, and other sources may be updated at the same address. The new folder's MANIFEST records the size and checksum of every file it contains; compare them with `docker/assets/MANIFEST_<species>.json`: files with the same checksum are identical. Validate a changed build with a pipeline run before trusting its results.
 
-`assets_v1` is a drop-in for the existing `assets/`:
+`python update_manifest.py <folder> --species human --check` compares the files of a references folder with its own MANIFEST, e.g. after copying the folder.
 
-- **Local:** set `dbdir: ".../assets_v1"` in your local config.
-- **Docker:** pass the folder to the run command with `--references` (it is mounted read-only;
-  the relative `human.dbpaths.csv` works in both places).
-- **Folders built before 2026-10-08** have `human.local.dbpaths.csv` (absolute paths) and
-  `human.docker.dbpaths.csv` instead. Bring them up to date without rebuilding:
-  `python buildDB/update_manifest.py <folder> --species human` (writes `human.dbpaths.csv` and the file
-  checksums in the MANIFEST; `--check` later compares the files with it). Locally the older file is still
-  accepted, with a warning; in Docker it is refused.
+## Using a built folder
 
-## Rebuilding one species in a shared folder (e.g. mouse in `docker/assets`)
+Give the folder to the pipeline with `--references FOLDER`, with the starter, with `docker run` or without Docker; see the [user guide, *Own references*](../USER_GUIDE.md#own-references). The paths in `<species>.dbpaths.csv` are relative to the folder, so it can be moved or mounted anywhere.
 
-Never build a second species into a folder that already holds one: `buildDB_v1.py` always rebuilds the
-shared UniVec and RiboSpike indexes and writes unprefixed intermediates (`trna/trnas.fa`,
-`trna/pretrnas.bed`, `rrna/rrna.species.fa`). Build into an empty folder and install from there:
+Folder layout:
 
-```bash
-python buildDB/buildDB_v1.py --species mouse --output ../assets_mouse_build     # empty folder, hours
-python buildDB/install_species.py ../assets_mouse_build docker/assets --species mouse
-python test/levels/check_mouse_references.py docker/assets                     # content + both MANIFESTs
-bash test/levels/run_mouse_synthetic.sh                                         # synthetic mouse reads
+```
+my_references/
+  univec/ ribospike/ rrna/ trna/ mirna/ pirna/ gtf/ genome/   # the indexes
+  human.bed                   # features: sequence name, start, end, feature, biotype, strand
+  human.dbpaths.csv           # mapping tiers in priority order; index paths relative to this folder
+  MANIFEST_human.json         # per source: URL, version, download time, sha256; tool versions;
+                              # size and sha256 of the dbpaths file, the BED and every index file
+  PROVENANCE_human.md         # the same, readable
 ```
 
-`install_species.py` copies only the species' files (`mouse.*`, `mouse-*`, `mm39-*`, MANIFEST, PROVENANCE),
-reports whether the new build's shared indexes equal the installed ones (the installed ones are kept),
-moves the replaced files into `<build>/_replaced_mouse_<time>/` (nothing is deleted) and recomputes the
-MANIFEST's file checksums from the installed files.
+## Things to know
 
-## Sources pinned for v1 (resolved 2026-07-02)
-
-| DB | Version | Notes |
-|----|---------|-------|
-| genome / gtf | Ensembl **release-116** (GRCh38) | liveness-checked ✓ |
-| tRNA | GtRNAdb2 **hg38** tarball | switched from a bundled tarball to a real URL |
-| miRNA | **MirGeneDB 3.0** | |
-| piRNA | **piRBase v3.0** gold set | newest; upstream MD5 recorded in the manifest |
-| rRNA | mirtrace `rRNA_reference.fa` (**master**) | content is hashed in the manifest |
-| UniVec | NCBI UniVec (current build) | |
-| ribospike | local `inputs/ribospike.fa` | synthetic; not downloadable |
-
-### Things to know (flagged honestly)
-
-- **Ensembl FTP migration:** Ensembl is moving to a new platform/FTP in summer
-  2026; 116 is the last release on the classic `ftp.ensembl.org`. Run
-  `--check-urls` before a build; if the genome/gtf URLs 404, switch them to the
-  new host (`ftp.ebi.ac.uk/pub/ensemblorganisms/...`) in `SOURCES`.
-- **rRNA is pinned to a moving branch (`master`)**, not a commit. The manifest
-  records the sha256 of the exact bytes downloaded, so a build is still
-  reproducible by content; for strict URL reproducibility, pin a commit SHA.
-- **Index tools match production, not the old script.** `univec` and `rrna` are
-  built as **bowtie v1** indices (`univec_bt1`, `human-rrna_bt1`), everything
-  else bowtie2 — verified against the current `assets/` `dbpaths`. (The old
-  `buildDB.py` built univec/rrna with bowtie2 while tagging them `bowtie`, which
-  would not have matched the pipeline.)
-- **`mouse` is a placeholder** (`status: PLACEHOLDER-unverified`). Its URLs
-  follow the human pattern but are unchecked — verify each (especially the
-  GtRNAdb genome code `Mmusc39/mm39`) and set `status: "verified"` before use.
-  The builder refuses to run a placeholder species.
-
-## Important: this is a NEWER build than `assets/`
-
-`assets_v1` uses **newer source versions** than the current `assets/` (Ensembl
-116 vs 113, current MirGeneDB/piRBase, etc.). It is therefore **not byte-identical**
-to `assets/`, and read counts produced with it will differ — that is the point.
-What is guaranteed is **structural/format compatibility** (same index tools,
-names, padding, BED6 columns, dbpaths layout). Before trusting `assets_v1`,
-validate with a real pipeline run and sanity-check the outputs.
+- **Versions:** each build is tied to a numbered script. `buildDB_v1.py` stays as it is; a build with new sources goes into a copy, `buildDB_v2.py`, with the new URLs and versions in its `SOURCES`.
+- **Ensembl's FTP is moving** to a new platform; release 116 is the last on the classic `ftp.ensembl.org`. If `--check-urls` reports the genome or annotation URLs as missing, switch them to the new host (`ftp.ebi.ac.uk/pub/ensemblorganisms/...`) in a new script version.
+- **The rRNA file is pinned to a branch (`master`), not a commit.** The MANIFEST records the checksum of the exact file downloaded, so a build can be checked by content; for an exact URL, pin a commit.
+- **Another species:** add an entry to `SOURCES` in a new script version, following the human and mouse entries, check every URL, and mark it `"verified"`; the builder refuses entries marked as placeholders. Run the pipeline with `--species NAME --references FOLDER`.
