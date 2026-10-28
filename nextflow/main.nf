@@ -30,7 +30,7 @@ def helpMessage() {
     RiboMarker Nextflow Pipeline (Release 0.3.0 Compatible)
     ============================================================================
     Usage:
-      nextflow run nextflow/main.nf --input <samples.csv> --outdir <results> --assets_dir <references>
+      nextflow run nextflow/main.nf --input <samples.csv> --outdir <results> --assets_dir <references> [-profile <profiles>]
 
     Parameters:
       --input [file]           Path to sample sheet CSV (columns: sample, fastq_file, fastq_file2)
@@ -40,6 +40,17 @@ def helpMessage() {
       --run_id [str]           Run identifier folder (default: ribomarker)
       --multimap [int]         Maximum alignments reported per read (default: 100)
       --align_mode [str]       Alignment mode: standard (single-pass) or iterative (fallback for degraded cfRNA)
+
+    HPC & Container Options:
+      -profile [str]           Execution profiles (comma-separated):
+                                 Executors  : local, slurm, pbs, pbspro, sge, lsf
+                                 Containers : docker, singularity, apptainer
+      --cluster_queue [str]    Scheduler queue / partition name (optional)
+      --cluster_options [str]  Additional scheduler flags (e.g. '--account=myproj --qos=normal')
+      --max_cpus [int]         Maximum CPUs per task (default: 32)
+      --max_memory [str]       Maximum memory per task (default: 128.GB)
+      --max_time [str]         Maximum walltime per task (default: 48.h)
+      --container_image [str]  Container image URI (default: dockermultid/ribomarker-rna-fragmentomics:0.3.0)
     ============================================================================
     """
 }
@@ -70,6 +81,8 @@ workflow {
     Species           : ${species}
     Run ID            : ${params.run_id ?: 'ribomarker'}
     Align Mode        : ${params.align_mode ?: 'standard'}
+    Profile           : ${workflow.profile}
+    Container Engine  : ${workflow.containerEngine ?: 'none (host)'}
     ============================================================================
     """
 

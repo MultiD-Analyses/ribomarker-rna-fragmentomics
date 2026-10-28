@@ -9,6 +9,7 @@ All notable changes are listed here. Versions follow `MAJOR.MINOR.PATCH`; while 
 - Tier-by-tier Bowtie 1 and Bowtie 2 alignment streaming directly to coordinate-sorted BAM.
 - Added `--align_mode` option (`standard` vs. `iterative`): `iterative` mode implements a two-pass hierarchical exact-first fallback that prevents false chance collisions on massive reference tiers (cDNA, genome) for reads <20 nt while capturing authentic donor variation and RNA modifications on compact small-RNA tiers.
 - 100% count matrix equivalence against synthetic ground truth (`truth.tsv`) in standard mode.
+- Added HPC cluster and container execution profiles (`slurm`, `pbs`, `pbspro`, `sge`, `lsf`, `docker`, `singularity`, `apptainer`) with dynamic resource scaling (`check_max`), scheduler queue/option passthrough (`--cluster_queue`, `--cluster_options`), and container conda `PATH` integration.
 - Drop-in CLI runner script: `internal/run_fragmentomics_nextflow.sh`.
 
 ## 0.3.0 – 2026-10-28
