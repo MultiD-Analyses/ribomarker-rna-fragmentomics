@@ -11,3 +11,12 @@ test/synthetic_qc/work/
 .snakemake/
 __pycache__/
 *.pyc
+
+# Nextflow execution artifacts
+.nextflow/
+.nextflow.log*
+work/
+
+# Internal documentation and development tools (GitLab only)
+/internal/
+/documentation/
