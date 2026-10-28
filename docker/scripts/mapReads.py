@@ -323,6 +323,251 @@ class MapReads(object):
 
         return
 
+    @staticmethod
+    def _is_fastq_empty(fq_path):
+        if not os.path.exists(fq_path) or os.path.getsize(fq_path) == 0:
+            return True
+        import gzip
+        try:
+            open_fn = gzip.open if fq_path.endswith('.gz') else open
+            with open_fn(fq_path, 'rt') as f:
+                line = f.readline()
+                return len(line.strip()) == 0
+        except Exception:
+            return True
+
+    @staticmethod
+    def _filter_fastq_by_length(in_fq, out_fq, min_len=20):
+        import gzip
+        open_in = gzip.open if in_fq.endswith('.gz') else open
+        open_out = gzip.open if out_fq.endswith('.gz') else open
+        count = 0
+        with open_in(in_fq, 'rt') as fin, open_out(out_fq, 'wt') as fout:
+            while True:
+                h = fin.readline()
+                if not h:
+                    break
+                seq = fin.readline()
+                plus = fin.readline()
+                qual = fin.readline()
+                if not qual:
+                    break
+                if len(seq.strip()) >= min_len:
+                    fout.write(h)
+                    fout.write(seq)
+                    fout.write(plus)
+                    fout.write(qual)
+                    count += 1
+        return count
+
+    def map_reads_iterative(self, sample):
+        '''
+        Hierarchical Exact-First Fallback Alignment for Degraded cfRNA:
+        Pass 1: Strict exact matching across all tiers (m=0).
+        Pass 2: Biological variation fallback on residual unmapped reads:
+                - Compact tiers (tRNA, miRNA, piRNA, etc.): allow 1 mismatch down to 15 nt.
+                - Massive tiers (ncRNA, cDNA, genome): allow 1 mismatch only for reads >= 20 nt.
+        '''
+        multimap = self.args.multimap
+        threads = self.args.threads
+
+        # Check if the final BAM file already exists
+        final_bam = f'{self.args.output}/alignments/{sample}.merged.bam'
+        if os.path.exists(final_bam):
+            print(f'{sample} already has all alignments. Skipping...')
+            return
+
+        fastq = self.fastqDict[sample]
+        if fastq.endswith('fa.gz') or fastq.endswith('fasta.gz') or fastq.endswith('fa'):
+            toggle_fasta = True
+        else:
+            toggle_fasta = False
+
+        dblist = [db.split('/')[-1] for db in self.dbs['db_path'].tolist()]
+        massive_keywords = ['ncrna', 'cdna', 'genome']
+
+        # Pass 1: Strict Exact Matching
+        # Bowtie 1: -v 0
+        # Bowtie 2: --score-min L,0,0
+        mapping_cmds_pass1 = {
+            'bowtie': (
+                'zcat -f {fastq_file} | '
+                'bowtie -S -k 1 -v 0 --chunkmbs 256 '
+                '-p {threads} '
+                '--un {outprefix}/alignments/unal/{sample}.{dbprefix}.p1.fq '
+                '{genome} - {outprefix}/alignments/{sample}.{dbprefix}.p1.sam '
+                '2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p1.log'
+            ),
+            'bowtie1': (
+                'bowtie --fullref --no-unal --best --strata -v 0 --chunkmbs 256 '
+                '-m {multimap} -p {threads} --un {outprefix}/alignments/unal/{sample}.{dbprefix}.p1.fq '
+                '-S {genome} {fastq_file} {outprefix}/alignments/{sample}.{dbprefix}.p1.sam '
+                '2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p1.log'
+            ),
+            'mind': (
+                'bowtie --fullref --no-unal -k 1 -v 0 --best --norc '
+                '-p {threads} --un {outprefix}/alignments/unal/{sample}.{dbprefix}.p1.fq '
+                '-S {genome} {fastq_file} {outprefix}/alignments/{sample}.{dbprefix}.p1.sam '
+                '2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p1.log'
+            ),
+            'ribospike': (
+                'bowtie --fullref --no-unal -k 1 -v 0 --best --norc '
+                '-p {threads} --un {outprefix}/alignments/unal/{sample}.{dbprefix}.p1.fq '
+                '-S {genome} {fastq_file} {outprefix}/alignments/{sample}.{dbprefix}.p1.sam '
+                '2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p1.log'
+            ),
+            'ribospikebt2': 'bowtie2 --sam-no-qname-trunc --no-unal --no-1mm-upfront --mp 6 --rdg 6,3 --rfg 6,3 --norc --n-ceil L,5,0.15 -k 1 -D 20 -R 2 -N 0 -L 10 -i S,1,0.40 --score-min L,0,0 --np 1 --ignore-quals --threads {threads} --un-gz {outprefix}/alignments/unal/{sample}.{dbprefix}.p1.fq.gz -x {genome} -U {fastq_file} -S {outprefix}/alignments/{sample}.{dbprefix}.p1.sam 2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p1.log',
+            'bowtie2': 'bowtie2 --sam-no-qname-trunc --no-unal --np 5 --very-sensitive --score-min L,0,0 --ignore-quals --threads {threads} --un-gz {outprefix}/alignments/unal/{sample}.{dbprefix}.p1.fq.gz -x {genome} -k {multimap} -U {fastq_file} -S {outprefix}/alignments/{sample}.{dbprefix}.p1.sam 2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p1.log',
+            'bowtie2best': 'bowtie2 --sam-no-qname-trunc --no-unal --np 5 --very-sensitive --score-min L,0,0 --ignore-quals --threads {threads} --un-gz {outprefix}/alignments/unal/{sample}.{dbprefix}.p1.fq.gz -x {genome} -U {fastq_file} -S {outprefix}/alignments/{sample}.{dbprefix}.p1.sam 2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p1.log',
+            'bowtie2sense': 'bowtie2 --sam-no-qname-trunc --norc --no-unal --np 5 --very-sensitive --score-min L,0,0 --ignore-quals --threads {threads} --un-gz {outprefix}/alignments/unal/{sample}.{dbprefix}.p1.fq.gz -x {genome} -U {fastq_file} -S {outprefix}/alignments/{sample}.{dbprefix}.p1.sam 2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p1.log',
+        }
+
+        # Pass 2: Fallback with 1 Mismatch
+        mapping_cmds_pass2 = {
+            'bowtie': (
+                'zcat -f {fastq_file} | '
+                'bowtie -S -k 1 -n 1 -l 18 -e 80 --chunkmbs 256 '
+                '-p {threads} '
+                '--un {outprefix}/alignments/unal/{sample}.{dbprefix}.p2.fq '
+                '{genome} - {outprefix}/alignments/{sample}.{dbprefix}.p2.sam '
+                '2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p2.log'
+            ),
+            'bowtie1': (
+                'bowtie --fullref --no-unal --best --strata -n 1 -l 18 -e 80 --chunkmbs 256 '
+                '-m {multimap} -p {threads} --un {outprefix}/alignments/unal/{sample}.{dbprefix}.p2.fq '
+                '-S {genome} {fastq_file} {outprefix}/alignments/{sample}.{dbprefix}.p2.sam '
+                '2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p2.log'
+            ),
+            'mind': (
+                'bowtie --fullref --no-unal -k 1 -v 1 --best --norc '
+                '-p {threads} --un {outprefix}/alignments/unal/{sample}.{dbprefix}.p2.fq '
+                '-S {genome} {fastq_file} {outprefix}/alignments/{sample}.{dbprefix}.p2.sam '
+                '2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p2.log'
+            ),
+            'ribospike': (
+                'bowtie --fullref --no-unal -k 1 -n 2 --best --norc '
+                '-p {threads} --un {outprefix}/alignments/unal/{sample}.{dbprefix}.p2.fq '
+                '-S {genome} {fastq_file} {outprefix}/alignments/{sample}.{dbprefix}.p2.sam '
+                '2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p2.log'
+            ),
+            'ribospikebt2': 'bowtie2 --sam-no-qname-trunc --no-unal --no-1mm-upfront --mp 6 --rdg 6,3 --rfg 6,3 --norc --n-ceil L,5,0.15 -k 1 -D 20 -R 2 -N 0 -L 10 -i S,1,0.40 --score-min L,0,-0.6 --np 1 --ignore-quals --threads {threads} --un-gz {outprefix}/alignments/unal/{sample}.{dbprefix}.p2.fq.gz -x {genome} -U {fastq_file} -S {outprefix}/alignments/{sample}.{dbprefix}.p2.sam 2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p2.log',
+            'bowtie2': 'bowtie2 --sam-no-qname-trunc --no-unal --np 5 --very-sensitive --ignore-quals --threads {threads} --un-gz {outprefix}/alignments/unal/{sample}.{dbprefix}.p2.fq.gz -x {genome} -k {multimap} -U {fastq_file} -S {outprefix}/alignments/{sample}.{dbprefix}.p2.sam 2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p2.log',
+            'bowtie2best': 'bowtie2 --sam-no-qname-trunc --no-unal --np 5 --very-sensitive --ignore-quals --threads {threads} --un-gz {outprefix}/alignments/unal/{sample}.{dbprefix}.p2.fq.gz -x {genome} -U {fastq_file} -S {outprefix}/alignments/{sample}.{dbprefix}.p2.sam 2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p2.log',
+            'bowtie2sense': 'bowtie2 --sam-no-qname-trunc --norc --no-unal --np 5 --very-sensitive --ignore-quals --threads {threads} --un-gz {outprefix}/alignments/unal/{sample}.{dbprefix}.p2.fq.gz -x {genome} -U {fastq_file} -S {outprefix}/alignments/{sample}.{dbprefix}.p2.sam 2> {outprefix}/alignments/logs/{sample}.{dbprefix}.p2.log',
+        }
+
+        sample_bams_to_merge = []
+        files_to_clean = []
+
+        # ==========================================
+        # PASS 1: Exact Match Cascade (All Tiers)
+        # ==========================================
+        print(f"[Iterative Alignment] Pass 1 (Exact Match, m=0) for {sample}")
+        curr_fq = fastq
+
+        for idx, row in self.dbs.iterrows():
+            db = row['db_path']
+            dbprefix = dblist[idx]
+            retain = row['retain']
+            map_cmd = row['map_cmd']
+
+            if not os.path.exists(curr_fq) or self._is_fastq_empty(curr_fq):
+                break
+
+            cmd = mapping_cmds_pass1[map_cmd].format(
+                threads=threads, genome=db, multimap=multimap,
+                fastq_file=curr_fq, outprefix=self.args.output,
+                sample=sample, dbprefix=dbprefix
+            )
+            if toggle_fasta:
+                cmd = cmd.replace('-S', '-f -S')
+
+            run(cmd)
+
+            if map_cmd in ['bowtie2', 'bowtie2best', 'bowtie2sense', 'ribospikebt2']:
+                next_fq = f'{self.args.output}/alignments/unal/{sample}.{dbprefix}.p1.fq.gz'
+            else:
+                next_fq = f'{self.args.output}/alignments/unal/{sample}.{dbprefix}.p1.fq'
+
+            curr_fq = next_fq
+            files_to_clean.append(curr_fq)
+
+            sam_file = f'{self.args.output}/alignments/{sample}.{dbprefix}.p1.sam'
+            if os.path.exists(sam_file):
+                bam_file = self.sam_to_bam(sam_file, filter_unaligned=True)
+                if retain == 'T':
+                    sample_bams_to_merge.append(bam_file)
+                files_to_clean.append(bam_file)
+
+        unaligned_pass1_fq = curr_fq
+
+        # ==========================================
+        # PASS 2: Biological Variation Fallback
+        # ==========================================
+        print(f"[Iterative Alignment] Pass 2 (Biological Fallback) for {sample}")
+        curr_fq_p2 = unaligned_pass1_fq
+
+        for idx, row in self.dbs.iterrows():
+            db = row['db_path']
+            dbprefix = dblist[idx]
+            retain = row['retain']
+            map_cmd = row['map_cmd']
+            is_last_tier = (idx == len(dblist) - 1)
+
+            if not os.path.exists(curr_fq_p2) or self._is_fastq_empty(curr_fq_p2):
+                break
+
+            is_massive = any(kw in dbprefix.lower() for kw in massive_keywords)
+
+            if is_massive:
+                filtered_fq = f'{self.args.output}/alignments/unal/{sample}.{dbprefix}.ge20.p2.fq'
+                kept_count = self._filter_fastq_by_length(curr_fq_p2, filtered_fq, min_len=20)
+                files_to_clean.append(filtered_fq)
+                if kept_count == 0:
+                    continue
+                in_fq_for_tier = filtered_fq
+            else:
+                in_fq_for_tier = curr_fq_p2
+
+            cmd = mapping_cmds_pass2[map_cmd].format(
+                threads=threads, genome=db, multimap=multimap,
+                fastq_file=in_fq_for_tier, outprefix=self.args.output,
+                sample=sample, dbprefix=dbprefix
+            )
+            if is_last_tier:
+                cmd = cmd.replace('--no-unal', '')
+            if toggle_fasta:
+                cmd = cmd.replace('-S', '-f -S')
+
+            run(cmd)
+
+            if map_cmd in ['bowtie2', 'bowtie2best', 'bowtie2sense', 'ribospikebt2']:
+                next_fq_p2 = f'{self.args.output}/alignments/unal/{sample}.{dbprefix}.p2.fq.gz'
+            else:
+                next_fq_p2 = f'{self.args.output}/alignments/unal/{sample}.{dbprefix}.p2.fq'
+
+            curr_fq_p2 = next_fq_p2
+            files_to_clean.append(curr_fq_p2)
+
+            sam_file = f'{self.args.output}/alignments/{sample}.{dbprefix}.p2.sam'
+            if os.path.exists(sam_file):
+                bam_file = self.sam_to_bam(sam_file, filter_unaligned=not is_last_tier)
+                if retain == 'T' or is_last_tier:
+                    sample_bams_to_merge.append(bam_file)
+                files_to_clean.append(bam_file)
+
+        # Merge all BAMs
+        self.merge_bams(sample, sample_bams_to_merge)
+
+        # Clean intermediate files
+        for f in files_to_clean:
+            try:
+                os.remove(f)
+            except:
+                pass
+        run(f'rm -f {self.args.output}/alignments/unal/{sample}*.fq*')
+        return
+
     def generate_module_logfile(self):
         '''
         Generates a log file for the module.
@@ -358,6 +603,7 @@ def main():
     ap.add_argument('-d', '--dbs', required=True, help='Bowtie databases to map reads to. Format: map_cmd,db_path,T/F retain reads that map to db.')
     ap.add_argument('--dbs-base', required=False, default=None, help='Folder that relative index paths in --dbs are resolved against. Default: the folder of the --dbs file.')
     ap.add_argument('-m', '--multimap', required=False, help='Number of multimapping loci a read can map to. Default=100', default=100)
+    ap.add_argument('--align-mode', dest='align_mode', choices=['standard', 'iterative'], default='standard', help='Alignment mode: standard (single-pass) or iterative (exact-first fallback for degraded cfRNA)')
     args = ap.parse_args()
     
     startTime = datetime.now()
@@ -408,7 +654,10 @@ def main():
             print(f'{sample} already has all alignments. Skipping...')
             continue
 
-        mr.map_reads(sample)
+        if getattr(args, 'align_mode', 'standard') == 'iterative':
+            mr.map_reads_iterative(sample)
+        else:
+            mr.map_reads(sample)
         print(f'-'*50)
 
     mr.generate_module_logfile()

@@ -2,6 +2,16 @@
 
 All notable changes are listed here. Versions follow `MAJOR.MINOR.PATCH`; while the version is 0.x, a change that alters results (including a new reference build) raises the minor version, other changes the patch version. The git tag `v<version>` and the image tag `<version>` belong to the same commit.
 
+## 0.3.1-dev-nxf (In Progress) – 2026-10-28
+
+- Nextflow DSL2 acceleration workflow (`nextflow/`): parallel asynchronous process scheduling across FASTQ trimming, 11-tier mapping cascade, and coverage generation.
+- Replaced two-pass Cutadapt with single-pass `fastp` streaming for circularization 1 nt 5' clipping (`--trim_front1 1`), adapter removal, 15 nt filter, and paired-end overlap merging.
+- Tier-by-tier Bowtie 1 and Bowtie 2 alignment streaming directly to coordinate-sorted BAM.
+- Added `--align_mode` option (`standard` vs. `iterative`): `iterative` mode implements a two-pass hierarchical exact-first fallback that prevents false chance collisions on massive reference tiers (cDNA, genome) for reads <20 nt while capturing authentic donor variation and RNA modifications on compact small-RNA tiers.
+- 100% count matrix equivalence against synthetic ground truth (`truth.tsv`) in standard mode.
+- Added HPC cluster and container execution profiles (`slurm`, `pbs`, `pbspro`, `sge`, `lsf`, `docker`, `singularity`, `apptainer`) with dynamic resource scaling (`check_max`), scheduler queue/option passthrough (`--cluster_queue`, `--cluster_options`), and container conda `PATH` integration.
+- Drop-in CLI runner script: `internal/run_fragmentomics_nextflow.sh`.
+
 ## 0.3.0 – 2026-10-28
 
 Results change (see *Changed results*), and many files, columns, RNA classes and settings have new names (see *Renamed*). Runs started with 0.2.x cannot be resumed with 0.3.0; start them again in an empty folder.
