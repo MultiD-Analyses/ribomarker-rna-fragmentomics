@@ -47,15 +47,15 @@ def expected_metrics(mode, sample, tiers):
 
     for column in ('Mapped', 'Unmapped', 'Unique', 'Multi'):
         expected[f'assign.{column.lower()}'] = truth[('mappingstats', column)]
-    type_counts = {key: value for (table, key), value in truth.items() if table == 'typecounts'}
+    type_counts = {key: value for (table, key), value in truth.items() if table == 'classcounts'}
     kept = sum(value for key, value in type_counts.items() if key != 'unmapped')
     expected['assign.kept'] = kept
     expected['assign.removed_by_policy'] = expected['assign.removed_multimap'] + expected['assign.removed_antisense']
     spikes = sum(value for key, value in type_counts.items() if key.startswith('RiboSpike'))
-    expected['assign.annotated'] = kept - type_counts.get('unannotated', 0) - spikes
+    expected['assign.annotated'] = kept - type_counts.get('genome_unannotated', 0) - type_counts.get('UniVec', 0) - spikes
     for key, value in type_counts.items():
         if key != 'unmapped':
-            expected[f'assign.type.{key}.reads'] = value
+            expected[f'assign.class.{key}.reads'] = value
 
     expected['spike.reads'] = truth.get(('tier_aligned', 'ribospike'), 0)
     for (table, key), value in truth.items():
@@ -68,7 +68,7 @@ def expected_metrics(mode, sample, tiers):
     expected['counts.detected.gt0'] = len(gene_counts)
     expected['counts.top10_reads'] = sum(sorted(gene_counts, reverse=True)[:10])
     with open(TRUTH_DIR / 'categories.tsv', newline='') as f:
-        rrna_genes = {row['gene'] for row in csv.DictReader(f, delimiter='\t') if row['typecount'] == 'rRNA'}
+        rrna_genes = {row['gene'] for row in csv.DictReader(f, delimiter='\t') if row['rna_class'] == 'rRNA'}
     non_rrna = sorted((value for (table, key), value in truth.items() if table == 'genecounts' and key not in rrna_genes),
                       reverse=True)
     expected['counts.library_size_non_rrna'] = sum(non_rrna)
@@ -133,11 +133,11 @@ def test_end_base_composition_on_exact_reads(collected):
 
 def test_spike_offset_histograms_equal_truth(collected):
     """spike.{len}.length_offset_hist: full-length spike reads at observed - designed length -2..+2, summed
-    over the four types, from the truth's ribolengths rows (C04: offset 0, C26: -1, C27: -2)."""
+    over the four types, from the truth's spikelengths rows (C04: offset 0, C26: -1, C27: -2)."""
     mode, report = collected
     found = values(report)
     with open(TRUTH_DIR / 'truth.tsv', newline='') as f:
-        rows = [row for row in csv.DictReader(f, delimiter='\t') if row['mode'] == mode and row['table'] == 'ribolengths']
+        rows = [row for row in csv.DictReader(f, delimiter='\t') if row['mode'] == mode and row['table'] == 'spikelengths']
     offsets = [-2, -1, 0, 1, 2]
     checked = 0
     for sample in report['samples']:
@@ -164,8 +164,8 @@ def kept_reads(mode, sample):
         for read in csv.DictReader(f, delimiter='\t'):
             category = categories[read['category']]
             if (read['sample'] == sample and read[fate] == 'mapped' and not category['removed']
-                    and category['typecount'] not in ('', 'unmapped')):
-                kept.setdefault(category['typecount'], []).append(read['insert_sequence'])
+                    and category['rna_class'] not in ('', 'unmapped')):
+                kept.setdefault(category['rna_class'], []).append(read['insert_sequence'])
     return kept
 
 
@@ -180,10 +180,10 @@ def test_length_and_sequence_metrics_equal_truth(collected):
             continue
         for biotype, sequences in kept_reads(mode, sample).items():
             lengths = [len(sequence) for sequence in sequences]
-            assert len(sequences) == truth[('typecounts', biotype)], f'{sample} {biotype}: kept reads'
-            assert found[(sample, f'assign.type.{biotype}.floor_reads')] == sum(15 <= n <= 17 for n in lengths), biotype
-            assert found[(sample, f'assign.type.{biotype}.median_length')] == statistics.median(lengths), biotype
-            assert found[(sample, f'assign.type.{biotype}.distinct_sequences')] == len(set(sequences)), biotype
+            assert len(sequences) == truth[('classcounts', biotype)], f'{sample} {biotype}: kept reads'
+            assert found[(sample, f'assign.class.{biotype}.floor_reads')] == sum(15 <= n <= 17 for n in lengths), biotype
+            assert found[(sample, f'assign.class.{biotype}.median_length')] == statistics.median(lengths), biotype
+            assert found[(sample, f'assign.class.{biotype}.distinct_sequences')] == len(set(sequences)), biotype
 
 
 def test_only_expected_warning(collected):

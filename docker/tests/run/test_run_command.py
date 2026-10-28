@@ -180,6 +180,20 @@ def test_valid_values_of_allowed_settings_are_taken(tmp_path):
                                                    'keep_types': 'miRNA,tRNA,Mt_tRNA,pre-mRNA'}
 
 
+def test_report_group_must_be_a_column_of_the_sheet(tmp_path):
+    """report_group (0.3.0, RealSeq review #1): a column name of the user's sheet, checked before the run."""
+    fastq(tmp_path / 'in', 'A_R1.fastq.gz', 'A_R2.fastq.gz')
+    write_sheet(tmp_path / 'in', 'sample;fastq_file;fastq_file2;group\nA;A_R1.fastq.gz;A_R2.fastq.gz;case\n')
+    references(tmp_path / 'refs', with_manifest=True)
+    good = write_yaml(tmp_path / 'good.yaml', {'report_group': 'group'})
+    assert yaml.safe_load(rc.prepare(args(tmp_path, config=str(good)))['config_text'])['report_group'] == 'group'
+    bad = write_yaml(tmp_path / 'bad.yaml', {'report_group': 'condition'})
+    with pytest.raises(RunError, match="'condition' is not a column of the sample sheet"):
+        rc.prepare(args(tmp_path, config=str(bad)))
+    with pytest.raises(RunError, match='not the name of a column'):
+        rc.user_config(write_yaml(tmp_path / 'empty.yaml', {'report_group': ''}))
+
+
 def test_a_config_file_that_is_not_yaml_is_refused(tmp_path):
     (tmp_path / 'c.yaml').write_text('multimap: [1\n')
     with pytest.raises(RunError, match='cannot be read as a YAML file'):
@@ -544,3 +558,104 @@ def test_refusal_before_start_writes_nothing_into_the_run_folder(tmp_path, capsy
 def test_main_dispatches_run(tmp_path):
     text = (REPO / 'docker' / 'scripts' / 'main.py').read_text()
     assert 'if len(sys.argv) > 1 and sys.argv[1] == "run":' in text and 'from runCommand import main' in text
+
+
+# ----------------------------------------------------------------------------- 0.3.0: --tiers and --rna-classes
+CODE_TABLE = REPO / 'docker' / 'tables' / 'human.rna_classes.tsv'
+
+
+def three_tiers(folder):
+    """References with UniVec, tRNA and genome tiers (made by one_sample's references() plus two)."""
+    for index, ending in (('univec/univec_bt1', '.1.ebwt'), ('trna/human-trnas', '.1.bt2')):
+        (folder / index).parent.mkdir(parents=True, exist_ok=True)
+        (folder / (index + ending)).write_text('x')
+    (folder / 'human.dbpaths.csv').write_text('bowtie,univec/univec_bt1,T\nbowtie2,trna/human-trnas,T\n'
+                                              'bowtie2,genome/human-genome,T\n')
+
+
+def test_default_tables_are_recorded_as_not_replaced(tmp_path):
+    one_sample(tmp_path)
+    p = rc.prepare(args(tmp_path))
+    assert p['tables']['rna_classes']['file'] == 'human.rna_classes.tsv'
+    assert not p['tables']['rna_classes']['replaced'] and not p['tables']['tiers']['replaced']
+    config = yaml.safe_load(p['config_text'])
+    assert 'rna_classes' not in config and 'tiers' not in config     # a resumed 0.2.x run keeps its config
+
+
+def test_replaced_tables_reach_the_pipeline_config(tmp_path):
+    one_sample(tmp_path)
+    three_tiers(tmp_path / 'refs')
+    tiers = tmp_path / 'my' / 'tiers.csv'
+    tiers.parent.mkdir()
+    tiers.write_text('bowtie,univec/univec_bt1,T\nbowtie2,genome/human-genome,T\n')   # relative to refs
+    classes = tmp_path / 'my' / 'classes.tsv'
+    classes.write_text(CODE_TABLE.read_text())
+    p = rc.prepare(args(tmp_path, tiers=str(tiers), rna_classes=str(classes)))
+    config = yaml.safe_load(p['config_text'])
+    assert config['tiers'] == str(tiers.resolve()) and config['rna_classes'] == str(classes.resolve())
+    assert p['tables']['rna_classes']['replaced'] and p['tables']['tiers']['replaced']
+    # the built-in class table names tiers this two-tier list does not have (critique 2026-10-27)
+    assert any('names tiers that the tier list does not have' in w and 'trnas' in w for w in p['warnings'])
+
+
+def test_the_option_wins_over_the_config_key(tmp_path):
+    one_sample(tmp_path)
+    mine, other = tmp_path / 'mine.tsv', tmp_path / 'other.tsv'
+    for f in (mine, other):
+        f.write_text(CODE_TABLE.read_text())
+    settings = write_yaml(tmp_path / 's.yaml', {'rna_classes': str(other)})
+    p = rc.prepare(args(tmp_path, config=str(settings), rna_classes=str(mine)))
+    assert yaml.safe_load(p['config_text'])['rna_classes'] == str(mine.resolve())
+    p = rc.prepare(args(tmp_path, config=str(settings)))
+    assert yaml.safe_load(p['config_text'])['rna_classes'] == str(other.resolve())
+
+
+@pytest.mark.parametrize('kind, text, words', [
+    ('rna_classes', None, 'file not found'),
+    ('rna_classes', 'label\tclass\nrRNA\trRNA\n', 'RNA class table: .*columns'),
+    ('tiers', None, 'file not found'),
+    ('tiers', 'bowtie2,genome/human-genome,T\nbowtie,univec/univec_bt1,T\n', 'must come first'),
+    ('tiers', 'bowtie2,genome/human-genome\n', 'map_cmd,index,retain'),
+])
+def test_unusable_tables_are_refused(tmp_path, kind, text, words):
+    one_sample(tmp_path)
+    three_tiers(tmp_path / 'refs')
+    f = tmp_path / 'table'
+    if text is not None:
+        f.write_text(text)
+    with pytest.raises(RunError, match=words):
+        rc.prepare(args(tmp_path, **{kind: str(f)}))
+
+
+def test_bed_labels_missing_from_the_class_table_give_a_warning(tmp_path):
+    one_sample(tmp_path)
+    with open(tmp_path / 'refs' / 'human.bed', 'a') as f:
+        f.write('c\t5\t9\tg\tbrand_new_RNA\t+\n')
+    p = rc.prepare(args(tmp_path))
+    assert any('brand_new_RNA' in w and 'own class' in w for w in p['warnings'])
+
+
+@pytest.mark.parametrize('key', ['keep_classes', 'keep_types'])
+@pytest.mark.parametrize('value', ['miRNA;rm -rf x', 'miRNA tRNA', '$(id)'])
+def test_keep_values_with_special_characters_are_refused(tmp_path, key, value):
+    with pytest.raises(RunError, match=key):
+        rc.user_config(write_yaml(tmp_path / 's.yaml', {key: value}))
+
+
+def test_old_class_names_in_keep_classes_give_a_warning(tmp_path):
+    """Old class names are accepted with a warning (plan, renaming); miRNA-star is part of miRNA since 0.3.0 (critique
+    2026-10-27: before, it was translated silently)."""
+    one_sample(tmp_path)
+    p = rc.prepare(args(tmp_path, config=str(write_yaml(tmp_path / 's.yaml', {'keep_classes': 'miRNA-star,tRNA'}))))
+    assert any('miRNA-star is a name before 0.3.0; the RNA class miRNA is kept' in w for w in p['warnings'])
+    assert not any('tRNA is a name' in w for w in p['warnings'])
+
+
+def test_keep_types_is_renamed_keep_classes_with_a_warning(tmp_path):
+    one_sample(tmp_path)
+    p = rc.prepare(args(tmp_path, config=str(write_yaml(tmp_path / 's.yaml', {'keep_types': 'miRNA,tRNA'}))))
+    config = yaml.safe_load(p['config_text'])
+    assert config['keep_classes'] == 'miRNA,tRNA' and 'keep_types' not in config
+    assert any('keep_types is called keep_classes' in w for w in p['warnings'])
+    both = write_yaml(tmp_path / 'b.yaml', {'keep_types': 'miRNA', 'keep_classes': 'tRNA'})
+    assert yaml.safe_load(rc.prepare(args(tmp_path, config=str(both)))['config_text'])['keep_classes'] == 'tRNA'

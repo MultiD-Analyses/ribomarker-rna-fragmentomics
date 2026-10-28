@@ -50,9 +50,11 @@ ENV RIBOMARKER_PIPELINE_DIR=/pipeline
 # Demo data for `run --demo`: small synthetic reads, truth and references (made by docker/make_demo.sh).
 COPY demo/ /pipeline/demo/
 
-# Pipeline code (changes often): plain Python scripts, the Snakefile, QC settings, the entry script.
+# Pipeline code (changes often): plain Python scripts, the Snakefile, QC settings, the RNA class tables
+# (refTables.py), the entry script.
 COPY scripts/ /pipeline/scripts/
 COPY qc/ /pipeline/qc/
+COPY tables/ /pipeline/tables/
 COPY Snakefile VERSION run-pipeline.sh /pipeline/
 RUN chmod +x /pipeline/run-pipeline.sh \
  && /opt/conda/envs/ribomarker/bin/python /pipeline/scripts/codeFingerprint.py /pipeline > /pipeline/CODE_FINGERPRINT

@@ -34,16 +34,17 @@ from pathlib import Path
 import yaml
 
 import codeFingerprint
+import dbPaths
 import qcChecks
+import refTables
 
 REPO = Path(__file__).resolve().parents[2]
 DICTIONARY_FILE = REPO / 'docker' / 'qc' / 'metrics.yaml'
 VERSION_FILE = REPO / 'docker' / 'VERSION'
 
 SPIKE_OFFSETS = [-2, -1, 0, 1, 2]    # full-length spike reads are >= designed length - 2
-FLOOR_LENGTHS = [15, 16, 17]         # assign.type.{biotype}.floor_reads
+FLOOR_LENGTHS = [15, 16, 17]         # assign.class.{rna_class}.floor_reads
 DETECTION_ABOVE = [0, 5, 10]         # counts.detected.*.gt{n}: genes with more than n counts
-RRNA_BIOTYPES = {'rRNA', 'Mt_rRNA'}  # left out of counts.*_non_rrna
 RBC_MIRNAS = {'human': ('Hsa-Mir-451_5p', 'Hsa-Mir-23-P3_3p'),
               'mouse': ('Mmu-Mir-451_5p', 'Mmu-Mir-23-P3_3p')}
 NUMERIC_KINDS = {'count', 'rate', 'length', 'ratio'}   # written to metrics_long.tsv
@@ -164,6 +165,7 @@ class Collector:
         self.metrics = {sample: {} for sample in samples}        # sample -> {id: record}
         self.distributions = {sample: [] for sample in samples}
         self.provenance = {}
+        self.classes = None                                      # the run's RNA class table (refTables)
         self.warnings = []
         self.checks = []
         self.facts = {sample: {} for sample in samples}          # numbers read only for the checks
@@ -408,17 +410,18 @@ def read_mappingstats(c, out, sample):
     c.put(sample, 'assign.multi', values['Multi'])
 
 
-def read_typecounts(c, out, sample):
-    counts = sample_columns(find_table(out, 'typecounts'), sample)
+def read_classcounts(c, out, sample):
+    counts = sample_columns(find_table(out, 'classcounts'), sample)
     kept = sum(n for biotype, n in counts.items() if biotype != 'unmapped')
     spikes = sum(n for biotype, n in counts.items() if biotype.startswith('RiboSpike'))
     # A category missing from this count table had no reads in any sample: 0 is a measurement here.
-    unannotated = counts.get('unannotated', 0)
+    unannotated = counts.get(c.classes.class_of('unannotated'), 0)      # genome_unannotated
+    univec = counts.get(c.classes.class_of('UniVec'), 0)                # vector contaminants (3g; before: in unannotated)
     c.put(sample, 'assign.kept', kept)
-    c.put(sample, 'assign.annotated', kept - unannotated - spikes)
+    c.put(sample, 'assign.annotated', kept - unannotated - univec - spikes)
     for biotype, n in counts.items():
         if biotype != 'unmapped':
-            c.put(sample, 'assign.type.{biotype}.reads', n, biotype=biotype)
+            c.put(sample, 'assign.class.{rna_class}.reads', n, rna_class=biotype)
 
 
 def derive_removed_by_policy(c, sample, config):
@@ -444,29 +447,44 @@ def derive_removed_by_policy(c, sample, config):
     c.put(sample, 'assign.removed_antisense', removed_antisense)
 
 
-def read_typelengths(c, out, sample):
-    rows = read_rows(find_table(out, 'typelengths'))
+def read_classlengths(c, out, sample):
+    rows = read_rows(find_table(out, 'classlengths'))
     lengths = [int(length) for length in rows[0][2:]]
     histograms = {row[1]: [to_int(n) for n in row[2:]] for row in rows[1:] if row[0] == sample}
     if not histograms:
-        raise KeyError(f'sample {sample} not in typelengths')
+        raise KeyError(f'sample {sample} not in classlengths')
     floor_positions = [lengths.index(length) for length in FLOOR_LENGTHS]
     for biotype, counts in histograms.items():
         if biotype == 'unmapped':
             continue
-        c.put_distribution(sample, 'assign.type.{biotype}.length_hist', lengths, counts, biotype=biotype)
+        c.put_distribution(sample, 'assign.class.{rna_class}.length_hist', lengths, counts, rna_class=biotype)
         if sum(counts) > 0:
-            c.put(sample, 'assign.type.{biotype}.median_length', histogram_median(lengths, counts),
-                  n_reads=sum(counts), biotype=biotype)
-        c.put(sample, 'assign.type.{biotype}.floor_reads', sum(counts[i] for i in floor_positions),
-              biotype=biotype)
+            c.put(sample, 'assign.class.{rna_class}.median_length', histogram_median(lengths, counts),
+                  n_reads=sum(counts), rna_class=biotype)
+        c.put(sample, 'assign.class.{rna_class}.floor_reads', sum(counts[i] for i in floor_positions),
+              rna_class=biotype)
+    natural = natural_classes(c, histograms)
+    reads = sum(sum(histograms[k]) for k in natural)
+    if reads > 0:
+        total = sum(length * n for k in natural for length, n in zip(lengths, histograms[k]))
+        c.put(sample, 'assign.natural_mean_length', total / reads, n_reads=reads)
+
+
+def natural_classes(c, classes):
+    """The classes whose reads are natural RNA: all kept classes except the spike-ins and UniVec (§8 item 11 of
+    the 0.3.0 plan); the denominator of the report's "% of natural reads". Spike-ins: the group spike-ins of the
+    class table (RiboSpike-*, miND; critique 2026-10-27: miND counted as natural before), and RiboSpike-* by name
+    for class tables of older runs."""
+    univec = c.classes.class_of('UniVec')
+    return [k for k in classes if k not in ('unmapped', univec) and not k.startswith('RiboSpike')
+            and c.classes.group(k) != 'spike-ins']
 
 
 def read_distinct_sequences(c, out, sample):
-    counts = sample_columns(find_table(out, 'biotypedistinctseqs'), sample)
+    counts = sample_columns(find_table(out, 'classdistinctseqs'), sample)
     for biotype, n in counts.items():
         if biotype != 'unmapped':
-            c.put(sample, 'assign.type.{biotype}.distinct_sequences', n, biotype=biotype)
+            c.put(sample, 'assign.class.{rna_class}.distinct_sequences', n, rna_class=biotype)
 
 
 def read_sample_metrics_log(c, out, sample):
@@ -485,7 +503,7 @@ SPIKE_NAME = re.compile(r'^RiboSpike-(\d+)-(T\d+)$')        # e.g. RiboSpike-20-
 
 
 def read_spike_types(c, out, sample):
-    counts = sample_columns(spike_table(out, 'ribotype'), sample)
+    counts = sample_columns(spike_table(out, 'readorigin'), sample)
     full_length = sum(n for name, n in counts.items() if re.fullmatch(r'RiboSpike-T\d+', name))
     fragments = counts.get('RiboSpike-Fragment', 0)     # count table: a missing row means no reads
     c.put(sample, 'spike.reads', full_length + fragments)
@@ -511,7 +529,7 @@ def designed_spike_lengths(out):
 
 
 def read_spike_lengths(c, out, sample):
-    rows = read_rows(spike_table(out, 'ribolengths'))
+    rows = read_rows(spike_table(out, 'spikelengths'))
     lengths = [int(length) for length in rows[0][2:]]
     by_length = {}                                      # observed length -> reads, summed over spike types
     for row in rows[1:]:
@@ -519,7 +537,7 @@ def read_spike_lengths(c, out, sample):
             for length, n in zip(lengths, row[2:]):
                 by_length[length] = by_length.get(length, 0) + to_int(n)
     if not by_length:
-        raise KeyError(f'sample {sample} not in ribolengths')
+        raise KeyError(f'sample {sample} not in spikelengths')
     designed_lengths = designed_spike_lengths(out)
     for designed in designed_lengths:
         reads = [by_length.get(designed + offset, 0) for offset in SPIKE_OFFSETS]
@@ -549,7 +567,7 @@ def end_base_deviations(out, sample, table):
         record = dict(zip(header, row))
         if record['sample'] != sample:
             continue
-        length = int(SPIKE_NAME.match(record['ribospike']).group(1))
+        length = int(SPIKE_NAME.match(record['spike']).group(1))
         counts = totals.setdefault((length, record['end']), {base: 0 for base in bases + ['N']})
         for base in counts:
             counts[base] += to_int(record[base])
@@ -605,17 +623,18 @@ def read_gene_counts(c, out, sample, species):
 def read_gene_biotypes(c, out, sample):
     counts = sample_columns(find_table(out, 'genecounts'), sample)
     rows = read_rows(find_table(out, 'genelengths'))
-    column = rows[0].index('biotype')
+    column = rows[0].index('rna_class')
     biotype_of = {row[0]: row[column] for row in rows[1:]}
     biotypes = sorted(set(biotype_of[gene] for gene in counts))    # KeyError if a gene has no biotype
     for biotype in biotypes:
         for above in DETECTION_ABOVE:
             detected = sum(1 for gene, n in counts.items() if biotype_of[gene] == biotype and n > above)
-            c.put(sample, 'counts.detected.{biotype}.gt{n}', detected, biotype=biotype, n=above)
+            c.put(sample, 'counts.detected.{rna_class}.gt{n}', detected, rna_class=biotype, n=above)
         ranked = sorted(((gene, n) for gene, n in counts.items() if biotype_of[gene] == biotype and n > 0),
                         key=lambda item: (-item[1], item[0]))                 # ties: by gene name
-        c.put(sample, 'counts.{biotype}.top20', [[gene, n] for gene, n in ranked[:20]], biotype=biotype)
-    non_rrna = sorted((n for gene, n in counts.items() if biotype_of[gene] not in RRNA_BIOTYPES), reverse=True)
+        c.put(sample, 'counts.{rna_class}.top20', [[gene, n] for gene, n in ranked[:20]], rna_class=biotype)
+    rrna = c.classes.rrna_classes()                       # class table: counts_as_rrna (rRNA, Mt_rRNA)
+    non_rrna = sorted((n for gene, n in counts.items() if biotype_of[gene] not in rrna), reverse=True)
     c.put(sample, 'counts.library_size_non_rrna', sum(non_rrna))
     c.put(sample, 'counts.top10_reads_non_rrna', sum(non_rrna[:10]))
 
@@ -661,6 +680,68 @@ def read_samples(sheet):
     return [[row[0], row[1]] + [os.path.basename(name) for name in row[2:]] for row in rows]
 
 
+def sheet_table(path):
+    """(header, rows) of a sample sheet in the dialects run accepts (runCommand.read_sheet): comma or semicolon,
+    UTF-8 with or without a byte-order mark; cells stripped, empty rows left out."""
+    lines = Path(path).read_text(encoding='utf-8-sig').splitlines()
+    first = lines[0] if lines else ''
+    delimiter = ';' if first.count(';') > first.count(',') else ','
+    rows = [[cell.strip() for cell in row] for row in csv.reader(lines, delimiter=delimiter) if any(c.strip() for c in row)]
+    if not rows:
+        raise ValueError(f'{Path(path).name} is empty')
+    return rows[0], rows[1:]
+
+
+def read_user_sheet(c, out, config):
+    """The user's sample sheet for the report (RealSeq review #1): <run>/sample_sheet.csv, which run copies there,
+    or the file of the configuration key sample_sheet (config route). Without either nothing is recorded."""
+    path = out / 'sample_sheet.csv'
+    if not path.exists():
+        if not config.get('sample_sheet'):
+            return
+        path = Path(config['sample_sheet'])
+    header, rows = sheet_table(path)
+    if 'sample' not in header:
+        raise KeyError(f'{path.name} has no column "sample"')
+    column = header.index('sample')
+    by_sample = {row[column]: row + [''] * (len(header) - len(row)) for row in rows if column < len(row)}
+    missing = [s for s in c.samples if s not in by_sample]
+    if missing:
+        c.warn(None, path.name, f'samples of the run not in the sample sheet: {", ".join(missing)}')
+    group = config.get('report_group')
+    if group and group not in header:
+        c.warn(None, 'config: report_group', f'column {group!r} is not in {path.name}; samples are not grouped')
+        group = None
+    c.put_run('prov.sample_sheet', {'file': path.name, 'columns': header,
+                                    'rows': [by_sample[s][:len(header)] for s in c.samples if s in by_sample],
+                                    'report_group': group or None})
+
+
+def read_class_tables(c, out, config):
+    """The run's RNA class table (c.classes) and the provenance of it and of the tier list (prov.class_tables).
+    The Snakefile copies both into <run>/tables/ and records their sources in the configuration (rna_classes,
+    tiers); runs made before 0.3.0 and the test fixtures have neither, so they get what the Snakefile would
+    choose (refTables.find_table, dbPaths.find_dbpaths)."""
+    species, dbdir = config['species'], config['dbdir']
+    classes_source = config.get('rna_classes') or refTables.find_table(species, dbdir)
+    classes_copy = out / 'tables' / 'rna_classes.tsv'
+    c.classes = refTables.ClassTable(str(classes_copy if classes_copy.exists() else classes_source), species)
+    record = {'rna_classes': refTables.provenance(classes_source, refTables.default_table(species), classes_copy)}
+    try:
+        own_tiers = dbPaths.find_dbpaths(dbdir, species)
+        record['tiers'] = refTables.provenance(config.get('tiers') or own_tiers, own_tiers, out / 'tables' / 'tiers.csv')
+    except FileNotFoundError:     # no dbpaths file in the references folder: only the synthetic test bundle (a
+        pass                      # real run stops at the Snakefile's find_dbpaths before this point)
+    if config.get('gene_symbols') and os.path.exists(config['gene_symbols']):      # 3f
+        record['gene_symbols'] = refTables.provenance(config['gene_symbols'], config['gene_symbols'])
+        bed = os.path.join(dbdir, f'{species}.bed')
+        record['gene_symbols']['applied'] = refTables.gene_symbols_applied(config['gene_symbols'], bed)
+        if not record['gene_symbols']['applied']:   # critique 2026-10-27: before, only a stderr line said so
+            c.warn(None, os.path.basename(config['gene_symbols']),
+                   f'built for another references BED than {species}.bed; the gene-symbol columns are empty')
+    c.put_run('prov.class_tables', record)
+
+
 def collect_provenance(c, out, config, map_log):
     c.attempt(None, 'docker/VERSION', lambda c: c.put_run('prov.pipeline_version', read_version()))
     c.put_run('prov.config', config)
@@ -701,13 +782,13 @@ def collect_provenance(c, out, config, map_log):
 # *-ribospikeends.csv, which has rows only for samples with spike-in reads.
 SAMPLE_TABLES = [
     ('*-mappingstats.csv', lambda out: find_table(out, 'mappingstats'), 'rows'),
-    ('*-typecounts.csv', lambda out: find_table(out, 'typecounts'), 'columns'),
-    ('*-typelengths.csv', lambda out: find_table(out, 'typelengths'), 'rows'),
-    ('*-biotypedistinctseqs.csv', lambda out: find_table(out, 'biotypedistinctseqs'), 'columns'),
+    ('*-classcounts.csv', lambda out: find_table(out, 'classcounts'), 'columns'),
+    ('*-classlengths.csv', lambda out: find_table(out, 'classlengths'), 'rows'),
+    ('*-classdistinctseqs.csv', lambda out: find_table(out, 'classdistinctseqs'), 'columns'),
     ('*-genecounts.csv', lambda out: find_table(out, 'genecounts'), 'columns'),
-    ('ribospike/results/*-ribotype.csv', lambda out: spike_table(out, 'ribotype'), 'columns'),
+    ('ribospike/results/*-readorigin.csv', lambda out: spike_table(out, 'readorigin'), 'columns'),
     ('ribospike/results/*-ribospike.csv', lambda out: spike_table(out, 'ribospike'), 'columns'),
-    ('ribospike/results/*-ribolengths.csv', lambda out: spike_table(out, 'ribolengths'), 'rows'),
+    ('ribospike/results/*-spikelengths.csv', lambda out: spike_table(out, 'spikelengths'), 'rows'),
     ('samples.trimmed.csv', lambda out: out / 'samples.trimmed.csv', 'rows without header'),
 ]
 
@@ -761,7 +842,7 @@ def run_checks(c, out, config, map_log):
     for sample in c.samples:
         values = {metric_id: record['value'] for metric_id, record in c.metrics[sample].items()}
         c.checks += qcChecks.sample_checks(sample, values, c.facts[sample], c.mode, tiers, spike_counted,
-                                           genes_counted)
+                                           genes_counted, c.classes.not_gene_classes())
         if values.get('map.total_in') == 0:                                   # register A4
             c.warn(sample, 'map.total_in', 'no reads entered mapping; later sections are not evaluable')
 
@@ -819,6 +900,9 @@ def collect(out, config):
     c.put_run('prov.samples', sample_rows)
 
     warn_unsupported(c, config, samples)
+    c.attempt(None, 'tables/rna_classes.tsv', read_class_tables, out, config)
+    if c.classes is None:                               # unreadable: the code's default, with the warning above
+        c.classes = refTables.ClassTable(refTables.default_table(config['species']), config['species'])
 
     merged = lane_samples(config)
     map_log = None
@@ -839,15 +923,15 @@ def collect(out, config):
         if map_log is not None:
             collect_mapping(c, out, sample, map_log['tiers'])
         c.attempt(sample, '*-mappingstats.csv', read_mappingstats, out, sample)
-        c.attempt(sample, '*-typecounts.csv', read_typecounts, out, sample)
+        c.attempt(sample, '*-classcounts.csv', read_classcounts, out, sample)
         derive_removed_by_policy(c, sample, config)
-        c.attempt(sample, '*-typelengths.csv', read_typelengths, out, sample)
-        c.attempt(sample, '*-biotypedistinctseqs.csv', read_distinct_sequences, out, sample)
+        c.attempt(sample, '*-classlengths.csv', read_classlengths, out, sample)
+        c.attempt(sample, '*-classdistinctseqs.csv', read_distinct_sequences, out, sample)
         c.attempt(sample, f'metrics/{sample}.log', read_sample_metrics_log, out, sample)
         if config.get('count_ribospike', True):          # off: the spike-in tables are not made (no warnings)
-            c.attempt(sample, 'ribospike/results/*-ribotype.csv', read_spike_types, out, sample)
+            c.attempt(sample, 'ribospike/results/*-readorigin.csv', read_spike_types, out, sample)
             c.attempt(sample, 'ribospike/results/*-ribospike.csv', read_spike_counts, out, sample)
-            c.attempt(sample, 'ribospike/results/*-ribolengths.csv', read_spike_lengths, out, sample)
+            c.attempt(sample, 'ribospike/results/*-spikelengths.csv', read_spike_lengths, out, sample)
             c.attempt(sample, 'ribospike/results/*-ribospikeends.csv', read_spike_ends, out, sample)
             c.attempt(sample, 'ribospike/results/*-ribospikeends_exact.csv', read_spike_ends_exact, out, sample)
         if gene_table_made(config):                       # off: no gene table, so no counts.* metrics (no warnings)
@@ -855,6 +939,7 @@ def collect(out, config):
             c.attempt(sample, '*-genecounts.csv + *-genelengths.csv', read_gene_biotypes, out, sample)
 
     collect_provenance(c, out, config, map_log)
+    c.attempt(None, 'sample_sheet.csv', read_user_sheet, out, config)
     run_checks(c, out, config, map_log)
     for sample in samples:                                  # register A1-A3: n, share and flag per record
         qcChecks.annotate_computability(c.metrics[sample], c.distributions[sample])

@@ -8,13 +8,13 @@ Started by ribomarker.cmd, so that PowerShell's script setting (execution policy
   ribomarker --help                    all options
 
 Options: --threads N (default 8), --species NAME, --run-id NAME, --config FILE,
---references FOLDER, --unlock. Folders and files are your own paths; this script mounts them into
+--references FOLDER, --tiers FILE, --rna-classes FILE, --unlock. Folders and files are your own paths; this script mounts them into
 the container (the sheet's folder and the files read-only) and writes the docker run command.
-Image: $env:RIBOMARKER_IMAGE (default dockermultid/ribomarker-rna-fragmentomics:0.2.0). Same behaviour as the
+Image: $env:RIBOMARKER_IMAGE (default dockermultid/ribomarker-rna-fragmentomics:0.3.0). Same behaviour as the
 bash script ribomarker (Linux, macOS, WSL).
 #>
 $ErrorActionPreference = 'Stop'
-$Image = if ($env:RIBOMARKER_IMAGE) { $env:RIBOMARKER_IMAGE } else { 'dockermultid/ribomarker-rna-fragmentomics:0.2.0' }
+$Image = if ($env:RIBOMARKER_IMAGE) { $env:RIBOMARKER_IMAGE } else { 'dockermultid/ribomarker-rna-fragmentomics:0.3.0' }
 $Docker = if ($env:RIBOMARKER_DOCKER) { $env:RIBOMARKER_DOCKER } else { 'docker' }
 
 function Fail($message) {
@@ -42,7 +42,7 @@ while ($i -lt $args.Count) {
         if ($a -eq '--threads') { $threads = [string]$args[$i + 1] } else { $runArgs += $a, [string]$args[$i + 1] }
         $i += 2
     }
-    elseif ($a -eq '--config') {
+    elseif ($a -in @('--config', '--tiers', '--rna-classes')) {     # a file: mounted read-only as /data/<option>/<name>
         if ($i + 1 -ge $args.Count) { Fail "$a needs a file" }
         $file = [string]$args[$i + 1]
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { Fail "${a}: file not found: $file" }

@@ -5,10 +5,10 @@ Used by `run --demo` and by the level A test.
 Checked tables (found anywhere below --outdir):
   *-trimstats.csv     dimer_reads, trimmed_reads, merged_reads (PE) / <15nt_reads (SE)
   *-mappingstats.csv  Mapped, Unmapped, Unique, Multi, Total
-  *-typecounts.csv    reads per biotype
+  *-classcounts.csv   reads per RNA class (class ids; typecounts.csv before 0.3.0)
   *-genecounts.csv    reads per gene
   *-ribospike.csv     reads per spike
-  *-ribolengths.csv   read length per spike type
+  *-spikelengths.csv  read length per spike type (ribolengths.csv before 0.3.0)
 For the count tables, a row that is absent counts as 0, and any row with a
 non-zero count that is NOT in the truth is reported as a failure too.
 truth.tsv rows for other tables (input, tier_aligned, tier_aligned_multi, qc)
@@ -28,7 +28,7 @@ import glob
 import os
 import sys
 
-COUNT_TABLES = ("typecounts", "genecounts", "ribospike", "ribolengths")
+COUNT_TABLES = ("classcounts", "genecounts", "ribospike", "spikelengths")
 STAT_TABLES = ("trimstats", "mappingstats")
 
 
@@ -58,11 +58,11 @@ def load_observed(outdir):
             for row in rows[1:]:
                 for col, value in zip(header[1:], row[1:]):
                     obs[(table, row[0], col)] = value
-        elif table == "ribolengths":              # sample, biotype, 0, 1, 2, ...
+        elif table == "spikelengths":             # sample, spike_type, 0, 1, 2, ...
             for row in rows[1:]:
-                sample, biotype = row[0], row[1]
+                sample, spike_type = row[0], row[1]
                 for length, value in zip(header[2:], row[2:]):
-                    obs[(table, sample, f"{biotype}:{length}")] = value
+                    obs[(table, sample, f"{spike_type}:{length}")] = value
         else:                                     # one row per feature, one column per sample
             for row in rows[1:]:
                 for sample, value in zip(header[1:], row[1:]):

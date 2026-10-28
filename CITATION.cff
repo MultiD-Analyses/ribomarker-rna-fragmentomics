@@ -3,8 +3,8 @@ message: "If you use this software, please cite it as below, and the RiboMarker 
 type: software
 title: "RiboMarker: a pipeline for RNA fragmentomics"
 abstract: >-
-  Turns small-RNA sequencing reads (FASTQ) from RiboMarker libraries into counts per gene,
-  feature and RNA type, per-transcript coverage files and a technical QC report with
+  Turns small-RNA sequencing reads (FASTQ) from RiboMarker libraries into counts per feature,
+  reference sequence and RNA class, per-transcript coverage files and a technical QC report with
   consistency checks. Runs in a container image with the human and mouse references built in.
 authors:
   - given-names: Martin

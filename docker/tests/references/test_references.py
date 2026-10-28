@@ -65,6 +65,44 @@ def test_relative_dbpaths_path_given_from_another_folder(tmp_path, monkeypatch):
     assert dbPaths.read_dbpaths('refs/human.dbpaths.csv')[0][1] == str(tmp_path / 'refs' / 'trna' / 'human-trnas')
 
 
+def test_a_replaced_tier_list_resolves_against_the_references_folder(tmp_path):
+    """0.3.0 (--tiers): the replacement lies elsewhere, its relative index paths name tiers of the references."""
+    (tmp_path / 'refs').mkdir()
+    own = tmp_path / 'refs' / 'human.dbpaths.csv'
+    own.write_text('bowtie,univec/univec_bt1,T\nbowtie2,trna/human-trnas,T\nbowtie2,genome/human-genome,T\n')
+    mine = tmp_path / 'my_tiers.csv'
+    mine.write_text('bowtie,univec/univec_bt1,T\nbowtie2,genome/human-genome,T\n')
+    tiers = dbPaths.read_dbpaths(str(mine), str(tmp_path / 'refs'))
+    assert [index for _, index, _ in tiers] == [str(tmp_path / 'refs' / 'univec' / 'univec_bt1'),
+                                                str(tmp_path / 'refs' / 'genome' / 'human-genome')]
+    assert dbPaths.check_tier_list(tiers, dbPaths.read_dbpaths(str(own)), 'human') == []
+
+
+@pytest.mark.parametrize('lines, problem', [
+    (['bowtie2,trna/human-trnas,T', 'bowtie,univec/univec_bt1,T'], 'must come first'),
+    (['bowtie2,genome/human-genome,T', 'bowtie2,trna/human-trnas,T'], 'must be the last tier'),
+    (['bowtie2,trna/human-trnas,T', 'bowtie2,trna/human-trnas,T'], 'listed twice'),
+    (['bowtie2,mirna/human-mirna,T'], 'not a tier of the references folder'),
+])
+def test_a_replaced_tier_list_is_checked(tmp_path, lines, problem):
+    own = tmp_path / 'human.dbpaths.csv'
+    own.write_text('bowtie,univec/univec_bt1,T\nbowtie2,trna/human-trnas,T\nbowtie2,genome/human-genome,T\n')
+    mine = tmp_path / 'mine.csv'
+    mine.write_text('\n'.join(lines) + '\n')
+    problems = dbPaths.check_tier_list(dbPaths.read_dbpaths(str(mine), str(tmp_path)),
+                                       dbPaths.read_dbpaths(str(own)), 'human')
+    assert any(problem in p for p in problems), problems
+
+
+def test_tier_ids_are_index_basenames_without_the_species(tmp_path):
+    """The tier ids of the built-in references, in mapping order."""
+    lines = ['univec/univec_bt1', 'ribospike/ribospike', 'rrna/human-rrna_bt1', 'trna/human-trnas', 'mirna/human-mirna',
+             'mirna/human-star', 'mirna/human-pre', 'pirna/human-pirna', 'gtf/human-ncrna', 'gtf/human-cdna',
+             'genome/human-genome']
+    assert [dbPaths.tier_id(index, 'human') for index in lines] == [
+        'univec_bt1', 'ribospike', 'rrna_bt1', 'trnas', 'mirna', 'star', 'pre', 'pirna', 'ncrna', 'cdna', 'genome']
+
+
 def test_mapreads_reads_tiers_as_absolute_paths(tmp_path, monkeypatch):
     import mapReads
     monkeypatch.setattr(mapReads.os, 'popen', lambda cmd: io.StringIO('tool version 1.0.0\n'))

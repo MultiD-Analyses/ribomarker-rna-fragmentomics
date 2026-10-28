@@ -1,0 +1,17 @@
+rna_class,S1,S2,S3
+protein_coding,166,170,60
+tRNA,70,72,0
+lncRNA,68,78,20
+miRNA,59,61,0
+rRNA,54,60,0
+RiboSpike-T3,50,0,0
+RiboSpike-T4,50,0,0
+RiboSpike-T2,50,0,0
+RiboSpike-T1,50,0,0
+piRNA,43,41,0
+RiboSpike-Fragment,32,0,0
+UniVec,29,31,0
+genome_unannotated,28,26,0
+pre-mRNA,23,29,0
+snoRNA,15,21,0
+unmapped,13,11,0

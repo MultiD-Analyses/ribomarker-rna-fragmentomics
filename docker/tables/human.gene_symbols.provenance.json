@@ -1,0 +1,48 @@
+{
+  "builder": "make_gene_symbols.py",
+  "builder_version": "v1",
+  "builder_sha256": "881e04605c3e4ca1eefb691035e2add2d30e6d787e66f7b1aaee88c17457897e",
+  "built_utc": "2026-10-27T08:26:59Z",
+  "species": "human",
+  "references_bed": "docker/assets/human.bed",
+  "references_bed_sha256": "29d4a04452df9a40bf6669be3e19ecf165bea51167469833485effa913b39ec9",
+  "sources": {
+    "hgnc": {
+      "downloaded_utc": "2026-10-27T07:52:28Z (file time; reused download)",
+      "download_bytes": 16973125,
+      "url": "https://storage.googleapis.com/public-download-files/hgnc/archive/archive/quarterly/tsv/hgnc_complete_set_2026-10-06.tsv",
+      "version": "HGNC complete set, quarterly 2026-10-06 (CC0)",
+      "sha256": "8bf6f686e640dbc864a346484626953621b0500d900d26cd085a35c2782d725d"
+    },
+    "gtf": {
+      "downloaded_utc": "2026-10-27T07:53:15Z (file time; reused download)",
+      "download_bytes": 141121632,
+      "url": "https://ftp.ensembl.org/pub/release-116/gtf/homo_sapiens/Homo_sapiens.GRCh38.116.gtf.gz",
+      "version": "Ensembl release-116 / GRCh38",
+      "sha256": "ed992f0eac7197d9627bda618f8f831ba355c95bd5d0796af785387d462828b6"
+    },
+    "mirgenedb_gff": {
+      "downloaded_utc": "2026-10-27T07:53:22Z (file time; reused download)",
+      "download_bytes": 119486,
+      "url": "https://mirgenedb.org/gff/hsa?sort=pos&all=1",
+      "version": "MirGeneDB 3.0",
+      "sha256": "f36214724731beffcd83b87fd17239fb96126df104860ecb6b5cc8ed2bd8ab1f"
+    },
+    "mirbase_mature": {
+      "downloaded_utc": "2026-10-27T07:53:35Z (file time; reused download)",
+      "download_bytes": 6127225,
+      "url": "https://mirbase.org/download/mature.fa",
+      "version": "miRBase release 23.1 (Sep 2026; public domain)",
+      "sha256": "52d69eeb3c23c5ed0f66c8c9f24e1ad2cd94cc34e72e4fc376c0dd438d2779ff"
+    },
+    "mirbase_hairpin": {
+      "downloaded_utc": "2026-10-27T07:53:40Z (file time; reused download)",
+      "download_bytes": 7650549,
+      "url": "https://mirbase.org/download/hairpin.fa",
+      "version": "miRBase release 23.1 (Sep 2026; public domain)",
+      "sha256": "0b315c6071e84ee3bd8357c9696845f99b55842ec1cf8a83116fa01749467a5b"
+    }
+  },
+  "features_with_values": 50995,
+  "bed_features": 158697
+}

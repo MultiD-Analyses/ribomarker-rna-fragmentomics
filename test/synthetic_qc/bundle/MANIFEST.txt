@@ -6,6 +6,8 @@ chr21_sha256: 4e04ba169363b820ba6656c3749910e190d46734a3de6bfdf2fb67fde286c9ee
 production_assets_manifest_sha256: 1fa5a8382139a05bf3bad11445b8695197922aa8d6d13f4fab47aeb90d72efec
 univec_source: bowtie-inspect docker/assets/univec/univec_bt1 (first 3 records)
 selection_and_seed: set in make_mini_assets.py (window, records) and make_reads.py (SEED, categories)
+renamed_0.3.0: truth/truth.tsv and truth/categories.tsv regenerated with make_reads.py of release 0.3.0 (S2: class ids, table names classcounts/spikelengths); FASTQ files and reads_truth.tsv unchanged (byte-identical)
+renamed_0.3.0_S3g: truth.tsv and categories.tsv regenerated again (C05: class UniVec); FASTQ files and reads_truth.tsv unchanged (byte-identical)
 
 files (sha256):
 b158590c7d2024abba7132fe355f8f70719ddd19fc47547efd33228a405fef90  fastq/S1_R1_001.fastq.gz
@@ -29,6 +31,6 @@ bced6e3ae89710b5ccfa15ca0f7f80aeae7f7f523440fb96e4261b2ca9d43493  references/rrn
 8163de8b677fbfc416afae352215f37d779de94dbeea8831e9ca8bccb79521a6  references/tiers.csv
 83f6f4ab3d2f602aa922ca4206a40757fea8ea6798f13e746441a3ffe658b86a  references/trna/human-trnas.fa
 f5ac12412c4db340cec49f024b6169d87197dd3f7f4a28ea88ee67ea5be6220e  references/univec/univec_bt1.fa
-002d0c24681426178d8063770402f87b164f7031c1420fb214bef026d4f74ea7  truth/categories.tsv
+b6415f462e0c346a2d52bd39ee303ce1c11b49b8cd9bad11d9ecaf98789ea2dc  truth/categories.tsv
 c69e4c9101c8c64be35923cc218e7a932832c26f1dca9c930f5a94c60ff92ffb  truth/reads_truth.tsv
-34f556d7973e566066c0c8fc8bacd507be58f2a98378b2cd1f52c3e8ed4364ea  truth/truth.tsv
+8d96f1bffddd4a8dfc68553074487d17ae720be3730bd4c56db3d38b48a204b5  truth/truth.tsv

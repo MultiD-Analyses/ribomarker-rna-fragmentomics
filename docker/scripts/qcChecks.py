@@ -10,8 +10,10 @@ qcChecks.py -- consistency checks and computability rules for qcCollect.py.
   flag 'not evaluable' (n = 0 or denominator missing) or 'low n' (n < 100); the same
   for distributions and for medians / modes / deviations computed from n reads.
 
-Pure functions on values that qcCollect.py has already read; no file access here.
+Pure functions on values that qcCollect.py has already read; no file access here (except the code's default
+class table when no class table is passed).
 """
+import refTables
 
 LOW_N = 100          # register A1 (proposed default): below this a share is marked "low n"
 
@@ -22,8 +24,8 @@ CHECKS = {
     'C4': 'map.final_unaligned = assign.unmapped',
     'C5': 'assign.mapped + assign.unmapped = reads written by trimming',
     'C6': 'assign.removed_by_policy = mapping_total - reads_total in metrics/<sample>.log',
-    'C7': 'counts.library_size = assign.kept - reads of pre-mRNA, pre-tRNA, miRNA-pre, '
-          'unannotated and RiboSpike-* (typecounts)',
+    'C7': 'counts.library_size = assign.kept - reads of the classes not in the gene table: pre-mRNA, pre-tRNA, '
+          'pre-miRNA, genome_unannotated and RiboSpike-* (classcounts)',
     'C8': 'the reference BED contains no contigs named for another species',
     'C9': 'every result table contains exactly the samples of the sample sheet',
     'C10': 'assign.unique + assign.multi + spike.reads = assign.mapped',
@@ -36,7 +38,10 @@ SPECIES_PREFIXES = {
     'mouse': ('Mus_musculus_', 'Mmu-', 'piR-mmu-', 'ENSMUST'),
 }
 
-NOT_GENES = ('pre-mRNA', 'pre-tRNA', 'miRNA-pre', 'unannotated')   # dropped by collapseGenes.py
+# RNA classes that are not in the gene table (class table column gene_table: drop or exclude; collapseGenes.py).
+# qcCollect passes those of the run's class table; this default is the code's species-neutral table.
+def default_not_genes():
+    return refTables.ClassTable(refTables.default_table('default'), 'default').not_gene_classes()
 
 
 def check(check_id, expected, observed, sample=None, subject=None):
@@ -68,11 +73,14 @@ def subtract(a, b):
     return None if a is None or b is None else a - b
 
 
-def sample_checks(sample, values, facts, mode, tiers, spike_counted=True, genes_counted=True):
+def sample_checks(sample, values, facts, mode, tiers, spike_counted=True, genes_counted=True, not_genes=None):
     """Checks C1-C7 and C10 for one sample. values = {metric id: value}; facts = numbers read
     for checks only (fastp read-1 input, metrics log totals); tiers = [{'tier', 'retain'}] in order;
     spike_counted = False when count_ribospike is off (no spike-in tables, so C10 is not defined);
-    genes_counted = False when there is no gene table (C7 is not defined)."""
+    genes_counted = False when there is no gene table (C7 is not defined);
+    not_genes = RNA classes left out of the gene table (the run's class table; default_not_genes())."""
+    if not_genes is None:
+        not_genes = default_not_genes()
     get = values.get
     written = get('trim.merged_reads') if mode == 'pe' else get('trim.reads_written')
     checks = []
@@ -99,12 +107,12 @@ def sample_checks(sample, values, facts, mode, tiers, spike_counted=True, genes_
     checks.append(check('C6', subtract(facts.get('mapping_total'), facts.get('reads_total')),
                         get('assign.removed_by_policy'), sample))
 
-    # typecounts: a category without a row had no reads (0 is a measurement there)
-    not_genes = sum(value for metric_id, value in values.items()
-                    if metric_id.startswith('assign.type.') and metric_id.endswith('.reads')
-                    and (metric_id.split('.')[2] in NOT_GENES or metric_id.split('.')[2].startswith('RiboSpike')))
+    # classcounts: a class without a row had no reads (0 is a measurement there)
+    not_gene_reads = sum(value for metric_id, value in values.items()
+                         if metric_id.startswith('assign.class.') and metric_id.endswith('.reads')
+                         and (metric_id.split('.')[2] in not_genes or metric_id.split('.')[2].startswith('RiboSpike')))
     if genes_counted:
-        checks.append(check('C7', subtract(get('assign.kept'), not_genes), get('counts.library_size'), sample))
+        checks.append(check('C7', subtract(get('assign.kept'), not_gene_reads), get('counts.library_size'), sample))
     else:
         checks.append(not_applicable('C7', sample, GENES_OFF))
 

@@ -7,7 +7,7 @@
 #   label           short name for report columns
 #   level           sample (default) | run
 #   kind            count | rate | length | ratio | distribution | text | list
-#   unit            unit of the value (counts: reads / read pairs / genes ...)
+#   unit            unit of the value (counts: reads / read pairs / features ...)
 #   denominator_id  metric the report divides by to show a percentage (optional)
 #   modes           [pe, se]: run modes in which the metric exists; absent (not 0) otherwise
 #   source          file (relative to output_prefix) and field
@@ -17,7 +17,7 @@
 #
 # Placeholders in ids: {tier} = mapping index name, in the order the run used them
 # (logs/map.log, section 'databases'; e.g. univec_bt1, ribospike, human-rrna_bt1);
-# {biotype} = category in *-typecounts.csv / feature_type in *-featuretypes.csv;
+# {rna_class} = RNA class id in *-classcounts.csv / rna_class in *-featureclasses.csv (class table, 0.3.0);
 # {len} = spike-in length 20, 30, 40, 50, 60; {type} = spike-in type T1–T4;
 # {n} = 1, 5, 10; {lane} = sequencing lane of the FASTQ file name (L001, L002, ...).
 #
@@ -46,7 +46,7 @@ metrics:
   unit: "-"
   modes: [pe, se]
   source: "docker/VERSION; the code files (codeFingerprint.py), or the CODE_FINGERPRINT file next to VERSION (Docker image); .git/HEAD, or the GIT_COMMIT file next to VERSION (Docker image)"
-  definition: "Content of docker/VERSION, the code fingerprint (sha256 over Snakefile, VERSION, env.lock.txt, scripts/*.py, qc/*.yaml, qc/logos/*.png) and the git commit."
+  definition: "Content of docker/VERSION, the code fingerprint (sha256 over Snakefile, VERSION, env.lock.txt, scripts/*.py, qc/*.yaml, qc/*.css, qc/*.js, qc/logos/*.png, tables/*.tsv) and the git commit."
   caveat: "The commit is read from .git when present (git itself is not run) and does not show uncommitted changes; the code fingerprint does: equal fingerprints mean the same code."
 
 - id: prov.config
@@ -82,6 +82,17 @@ metrics:
     (Homo_sapiens_ / Hsa-, Mus_musculus_ / Mmu-) must match the configured species (check C8).
   caveat: "The mouse assets in docker/assets contain 261 Homo_sapiens tRNA rows and a human tRNA index."
 
+- id: prov.class_tables
+  section: prov
+  label: Class table and tier list
+  level: run
+  kind: text
+  unit: "-"
+  modes: [pe, se]
+  source: "<run>/tables/rna_classes.tsv and tiers.csv (copies made by the Snakefile); the configuration keys rna_classes and tiers"
+  definition: "The RNA class table and the tier list the run used: file name, sha256, and whether each replaced the default (the code's table for the species; the references folder's <species>.dbpaths.csv); the gene-symbol table, if any, and whether it was applied (built for the references BED of the run)."
+  caveat: "Runs made before 0.3.0 have no copies; for them the tables are the ones the Snakefile would choose now."
+
 - id: prov.tool_versions
   section: prov
   label: Tool versions
@@ -111,6 +122,17 @@ metrics:
   modes: [pe, se]
   source: "sample sheet"
   definition: "Sample, condition and FASTQ file names without directories."
+
+- id: prov.sample_sheet
+  section: prov
+  label: Sample sheet
+  level: run
+  kind: text
+  unit: "-"
+  modes: [pe, se]
+  source: "<run>/sample_sheet.csv (the user's sheet, copied by run) or the configuration key sample_sheet; the configuration key report_group"
+  definition: "The columns and rows of the user's sample sheet for the samples of the run (as text), and the column that groups and colours the samples in the report (report_group), if given."
+  caveat: "Every column of the sheet reaches the report; do not put personal data in it that the report's readers should not see."
 
 # ---------------------------------------------------------------- 5.3 trimming, paired-end
 - id: trim.pairs_in
@@ -448,7 +470,7 @@ metrics:
 
 - id: map.final_unaligned
   section: map
-  label: Unaligned after all tiers
+  label: Unmapped (aligned in no tier)
   kind: count
   unit: reads
   denominator_id: map.total_in
@@ -508,7 +530,7 @@ metrics:
   unit: reads
   denominator_id: assign.mapped
   modes: [pe, se]
-  source: "*-typecounts.csv: sum over all categories except 'unmapped'"
+  source: "*-classcounts.csv: sum over all categories except 'unmapped'"
   definition: "Assigned reads remaining after multimapper/antisense removal."
 
 - id: assign.removed_by_policy
@@ -554,61 +576,61 @@ metrics:
   unit: reads
   denominator_id: assign.kept
   modes: [pe, se]
-  source: "derived: assign.kept − typecounts 'unannotated' − typecounts 'RiboSpike-*'"
-  definition: "Kept reads assigned to an annotated RNA (spike-ins excluded)."
+  source: "derived: assign.kept − classcounts 'genome_unannotated' − classcounts 'UniVec' − classcounts 'RiboSpike-*'"
+  definition: "Kept reads assigned to an annotated RNA (spike-ins, vector contaminants (UniVec) and genome reads without a feature excluded)."
   caveat: "reads_annotated in metrics/<sample>.log is a different number (it includes unmapped reads) and is not used."
   threshold: Q1
 
-- id: assign.type.{biotype}.reads
+- id: assign.class.{rna_class}.reads
   section: assign
-  label: Reads (RNA type)
+  label: Reads (RNA class)
   kind: count
   unit: reads
   denominator_id: assign.kept
   modes: [pe, se]
-  source: "*-typecounts.csv: row {biotype}"
-  definition: "Kept reads per category; all categories are listed (incl. unannotated, RiboSpike-*, pre-mRNA) except 'unmapped' (= assign.unmapped). Composition after multimapper/antisense removal."
+  source: "*-classcounts.csv: row {rna_class}"
+  definition: "Kept reads per RNA class; all categories are listed (incl. genome_unannotated, RiboSpike-*, pre-mRNA) except 'unmapped' (= assign.unmapped). Composition after multimapper/antisense removal."
   caveat: "Removal depletes multi-copy families (tRNA, snRNA, lncRNA, piRNA)."
 
-- id: assign.type.{biotype}.length_hist
+- id: assign.class.{rna_class}.length_hist
   section: assign
-  label: Length distribution (RNA type)
+  label: Length distribution (RNA class)
   kind: distribution
   unit: reads per read length (nt)
   modes: [pe, se]
-  source: "*-typelengths.csv: row (sample, {biotype}), columns 0–150"
-  definition: "Read-length histogram per category (except unmapped), shown as fractions per length."
-  caveat: "Capped at 150 nt (parseMappings.py line 1289); harmless for 2 × 76 nt data."
+  source: "*-classlengths.csv: row (sample, {rna_class}), columns 0 nt to the longest read of the run (at least 150)"
+  definition: "Read-length histogram per RNA class (except unmapped), shown as fractions per length."
+  caveat: "Columns 0 to the longest read of the run, at least 150 (0.3.0; capped at 150 before)."
 
-- id: assign.type.{biotype}.median_length
+- id: assign.class.{rna_class}.median_length
   section: assign
-  label: Median length (RNA type)
+  label: Median length (RNA class)
   kind: length
   unit: nt
   modes: [pe, se]
-  source: "derived from assign.type.{biotype}.length_hist"
-  definition: "Median read length per category."
+  source: "derived from assign.class.{rna_class}.length_hist"
+  definition: "Median read length per RNA class."
 
-- id: assign.type.{biotype}.floor_reads
+- id: assign.class.{rna_class}.floor_reads
   section: assign
-  label: Reads 15–17 nt (RNA type)
+  label: Reads 15–17 nt (RNA class)
   kind: count
   unit: reads
-  denominator_id: assign.type.{biotype}.reads
+  denominator_id: assign.class.{rna_class}.reads
   modes: [pe, se]
-  source: "derived from assign.type.{biotype}.length_hist"
-  definition: "Reads of 15–17 nt per category."
-  caveat: "For mRNA/lncRNA, short reads can match a transcript contig by chance before reaching the genome tier (see the known limitations in the user guide)."
+  source: "derived from assign.class.{rna_class}.length_hist"
+  definition: "Reads of 15–17 nt per RNA class."
+  caveat: "For protein_coding/lncRNA, short reads can match a transcript contig by chance before reaching the genome tier (see the known limitations in the user guide)."
   threshold: Q14
 
-- id: assign.type.{biotype}.distinct_sequences
+- id: assign.class.{rna_class}.distinct_sequences
   section: assign
-  label: Distinct sequences (RNA type)
+  label: Distinct sequences (RNA class)
   kind: count
   unit: sequences
   modes: [pe, se]
-  source: "*-biotypedistinctseqs.csv: row {biotype}"
-  definition: "Distinct read sequences per category."
+  source: "*-classdistinctseqs.csv: row {rna_class}"
+  definition: "Distinct read sequences per RNA class."
 
 - id: assign.median_read_length
   section: assign
@@ -619,6 +641,16 @@ metrics:
   source: "metrics/<sample>.log: median_read_length"
   definition: "Median length of the kept and the unmapped reads; reads removed by remove_multimap / remove_antisense are not included (they are not in the length tally)."
 
+- id: assign.natural_mean_length
+  section: assign
+  label: Mean length of natural reads
+  kind: length
+  unit: nt
+  modes: [pe, se]
+  source: "derived from assign.class.{rna_class}.length_hist"
+  definition: "Mean length of the natural reads: the kept reads of every RNA class except the spike-ins (RiboSpike-*) and the vector contaminants (UniVec); unmapped reads are not included. The same reads are the denominator of the read-length plot \"% of natural reads\"."
+  caveat: "Reads removed by remove_multimap / remove_antisense are not included. A quality indicator of the library (degraded samples have shorter reads), not a size selection."
+
 # ---------------------------------------------------------------- 5.6 spike-ins
 - id: spike.reads
   section: spike
@@ -627,7 +659,7 @@ metrics:
   unit: reads
   denominator_id: map.total_in
   modes: [pe, se]
-  source: "ribospike/results/*-ribotype.csv: sum of rows RiboSpike-T1…T4 and RiboSpike-Fragment"
+  source: "ribospike/results/*-readorigin.csv: sum of rows RiboSpike-T1…T4 and RiboSpike-Fragment"
   definition: "All reads assigned to spike-ins, full-length and fragments."
   threshold: Q9
 
@@ -638,9 +670,9 @@ metrics:
   unit: reads
   denominator_id: spike.reads
   modes: [pe, se]
-  source: "*-ribotype.csv: row RiboSpike-Fragment"
+  source: "*-readorigin.csv: row RiboSpike-Fragment"
   definition: "Spike-in reads shorter than designed length − 2 nt (countRiboSpike.py line 146)."
-  caveat: "Labelled RiboSpike-Fragment in countRiboSpike.py and RiboSpike-Short in *-typecounts.csv (same count)."
+  caveat: "Called RiboSpike-Fragment in *-readorigin.csv and *-classcounts.csv (same count; RiboSpike-Short in typecounts.csv before 0.3.0)."
 
 - id: spike.{len}_{type}.reads
   section: spike
@@ -669,7 +701,7 @@ metrics:
   kind: distribution
   unit: reads per offset (nt)
   modes: [pe, se]
-  source: "*-ribolengths.csv: rows RiboSpike-T1…T4, lengths {len} − 2 … {len} + 2, summed over types"
+  source: "*-spikelengths.csv: rows RiboSpike-T1…T4, lengths {len} − 2 … {len} + 2, summed over types"
   definition: "Observed − designed length of full-length reads (designed lengths include the 4N ends)."
   caveat: >-
     Offsets below −2 cannot occur: such reads are fragments. The paired-end −1 mode of runs
@@ -755,39 +787,39 @@ metrics:
   unit: reads
   modes: [pe, se]
   source: "*-genecounts.csv: column sum per sample"
-  definition: "Gene-level counts (mature exonic, after multimapper/antisense removal; excludes pre-mRNA, pre-tRNA, miRNA-pre, spike-ins, unannotated)."
+  definition: "Reads of all features of the gene table (mature exonic, after multimapper/antisense removal; excludes pre-mRNA, pre-tRNA, pre-miRNA, spike-ins, vector contaminants (UniVec), genome_unannotated)."
 
 - id: counts.detected.gt{n}
   section: counts
-  label: Genes detected
+  label: Features detected
   kind: count
-  unit: genes
+  unit: features
   modes: [pe, se]
   source: "*-genecounts.csv"
-  definition: "Genes with more than {n} counts (n = 0, 5, 10)."
+  definition: "Features (rows of the gene table: a gene, a miRNA arm, a tRNA family, ...) with more than {n} reads (n = 0, 5, 10)."
   threshold: "Q11 (n = 10)"
 
-- id: counts.detected.{biotype}.gt{n}
+- id: counts.detected.{rna_class}.gt{n}
   section: counts
-  label: Genes detected (RNA type)
+  label: Features detected (RNA class)
   kind: count
-  unit: genes
+  unit: features
   modes: [pe, se]
-  source: "*-genecounts.csv joined with *-genelengths.csv (column biotype)"
-  definition: "Genes of one RNA type with more than {n} counts (n = 0, 5, 10)."
-  caveat: "The gene's RNA type is the one collapseGenes.py writes to *-genelengths.csv."
+  source: "*-genecounts.csv joined with *-genelengths.csv (column rna_class)"
+  definition: "Features (rows of the gene table) of one RNA class with more than {n} reads (n = 0, 5, 10)."
+  caveat: "The feature's RNA class is the one collapseGenes.py writes to *-genelengths.csv."
   threshold: "Q11 (n = 10)"
 
 - id: counts.top10_reads
   section: counts
-  label: Top-10 genes
+  label: Top-10 features
   kind: count
   unit: reads
   denominator_id: counts.library_size
   modes: [pe, se]
   source: "*-genecounts.csv"
-  definition: "Counts in the 10 highest genes (dominance)."
-  caveat: "In practice rRNA: in all six samples of 2026-09-30 the 10 highest genes are rRNA copies (77-83 % of the library); see counts.top10_reads_non_rrna."
+  definition: "Reads of the 10 highest features (dominance)."
+  caveat: "In practice rRNA: in all six samples of 2026-09-30 the 10 highest features are rRNA copies (77-83 % of the library); see counts.top10_reads_non_rrna."
   threshold: Q12
 
 - id: counts.library_size_non_rrna
@@ -796,38 +828,38 @@ metrics:
   kind: count
   unit: reads
   modes: [pe, se]
-  source: "*-genecounts.csv joined with *-genelengths.csv (column biotype)"
-  definition: "Gene-level counts of all genes except rRNA and Mt_rRNA."
+  source: "*-genecounts.csv joined with *-genelengths.csv (column rna_class)"
+  definition: "Reads of all features of the gene table except rRNA and Mt_rRNA."
 
 - id: counts.top10_reads_non_rrna
   section: counts
-  label: Top-10 genes without rRNA
+  label: Top-10 features without rRNA
   kind: count
   unit: reads
   denominator_id: counts.library_size_non_rrna
   modes: [pe, se]
-  source: "*-genecounts.csv joined with *-genelengths.csv (column biotype)"
-  definition: "Counts in the 10 highest genes that are not rRNA or Mt_rRNA (dominance without rRNA)."
+  source: "*-genecounts.csv joined with *-genelengths.csv (column rna_class)"
+  definition: "Reads of the 10 highest features that are not rRNA or Mt_rRNA (dominance without rRNA)."
   threshold: Q12
 
 - id: counts.top20
   section: counts
-  label: Top-20 RNAs
+  label: Top-20 features
   kind: list
-  unit: "gene: reads"
+  unit: "feature: reads"
   modes: [pe, se]
   source: "*-genecounts.csv"
-  definition: "The 20 most abundant RNAs (genes of every RNA type in *-genecounts.csv) with their counts; genes with 0 counts are left out."
+  definition: "The 20 most abundant features (rows of *-genecounts.csv, every RNA class) with their reads; features with 0 reads are left out."
 
-- id: counts.{biotype}.top20
+- id: counts.{rna_class}.top20
   section: counts
-  label: Top-20 RNAs (RNA type)
+  label: Top-20 features (RNA class)
   kind: list
-  unit: "gene: reads"
+  unit: "feature: reads"
   modes: [pe, se]
-  source: "*-genecounts.csv joined with *-genelengths.csv (column biotype)"
-  definition: "The 20 most abundant RNAs of one RNA type with their counts; genes with 0 counts are left out."
-  caveat: "The gene's RNA type is the one collapseGenes.py writes to *-genelengths.csv."
+  source: "*-genecounts.csv joined with *-genelengths.csv (column rna_class)"
+  definition: "The 20 most abundant features of one RNA class with their reads; features with 0 reads are left out."
+  caveat: "The feature's RNA class is the one collapseGenes.py writes to *-genelengths.csv."
 
 - id: counts.rbc_mirna_ratio
   section: counts

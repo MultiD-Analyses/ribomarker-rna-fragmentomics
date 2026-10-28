@@ -4,12 +4,12 @@
 # Per-feature coverage of the parsed alignments, written as a feature-keyed bedgraph.
 #
 # Reads the PARSED {sample}.bam (one record per assigned read, carrying a 'CS' tag = the
-# exact feature name) and writes:  feature  start  end  depth  type.
+# exact feature name) and writes:  feature  start  end  depth  rna_class (class id; 'type' before 0.3.0).
 # Because parseMappings already applied remove_multimap / remove_antisense at the read
 # level, this coverage matches the counts table and respects the flags. Each multimapper
 # is drawn once, at its assigned locus.
 #
-# Feature names are the EXACT names from *-featuretypes.csv (e.g. ABALON_multimap,
+# Feature names are the EXACT names from *-featureclasses.csv (e.g. ABALON_multimap,
 # A1CF_intron) - no suffix stripping. ABALON and ABALON_multimap are separate tracks.
 
 import argparse
@@ -17,8 +17,8 @@ import collections
 
 
 def read_feature_types(feature_file):
-    """{feature: type} and {feature: gene_length} keyed by the EXACT feature name
-    (featuretypes columns: feature, feature_type[, gene_length])."""
+    """{feature: class} and {feature: length_nt} keyed by the EXACT feature name
+    (featureclasses columns: feature, rna_class[, length_nt])."""
     type_lookup, length_lookup = {}, {}
     with open(feature_file) as f:
         next(f, None)                                  # header
@@ -36,8 +36,8 @@ def read_feature_types(feature_file):
     return type_lookup, length_lookup
 
 
-def _keep_set(keep_types):
-    types = {t.strip() for t in keep_types.split(",")} if keep_types else {"all"}
+def _keep_set(keep_classes):
+    types = {t.strip() for t in keep_classes.split(",")} if keep_classes else {"all"}
     return ("all" in types or not types), types
 
 
@@ -61,9 +61,9 @@ def _depth_runs(counter):
 
 
 # --------------------------------------------------------------------- coverage
-def step_coverage(in_bam, out_bedgraph, type_lookup, keep_types):
+def step_coverage(in_bam, out_bedgraph, type_lookup, keep_classes):
     import pysam
-    keep_all, keep = _keep_set(keep_types)
+    keep_all, keep = _keep_set(keep_classes)
     cov = collections.defaultdict(collections.Counter)     # feature -> {pos: depth}
     bam = pysam.AlignmentFile(in_bam, "rb")
     for r in bam.fetch(until_eof=True):
@@ -92,12 +92,13 @@ def main():
     ap.add_argument("--step", default="coverage", choices=["coverage"])
     ap.add_argument("--input", required=True, help="parsed {sample}.bam")
     ap.add_argument("--output", required=True, help="output bedgraph")
-    ap.add_argument("--featuretypes", required=True, help="*-featuretypes.csv")
-    ap.add_argument("--keep-types", default="all", help="comma-separated types to keep, or 'all'")
+    ap.add_argument("--featureclasses", required=True, help="*-featureclasses.csv")
+    ap.add_argument("--keep-classes", default="all",
+                    help="comma-separated RNA class ids to keep, or 'all'")
     args = ap.parse_args()
 
-    type_lookup, _ = read_feature_types(args.featuretypes)
-    step_coverage(args.input, args.output, type_lookup, args.keep_types)
+    type_lookup, _ = read_feature_types(args.featureclasses)
+    step_coverage(args.input, args.output, type_lookup, args.keep_classes)
 
 
 if __name__ == "__main__":

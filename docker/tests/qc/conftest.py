@@ -17,6 +17,13 @@ DICTIONARY = yaml.safe_load((REPO / 'docker' / 'qc' / 'metrics.yaml').read_text(
 sys.path.insert(0, str(REPO / 'docker' / 'scripts'))      # lets the tests import qcCollect
 
 
+# Semicolons, a byte-order mark and the columns in another order than run writes them, as Excel saves a sheet
+USER_SHEET = ('\ufeffgroup;sample;fastq_file;fastq_file2;age\n'
+              'control;S1;S1_R1_001.fastq.gz;S1_R2_001.fastq.gz;41\n'
+              'case;S2;S2_R1_001.fastq.gz;S2_R2_001.fastq.gz;\n'
+              'control;S3;S3_R1_001.fastq.gz;S3_R2_001.fastq.gz;38\n')
+
+
 def prepare_run(tmp_path, mode):
     """Copy the level A fixture of one mode to tmp_path and write a config for it.
     Returns (run folder, config file)."""
@@ -33,7 +40,11 @@ def prepare_run(tmp_path, mode):
         'paired_end': mode == 'pe',
         'remove_multimap': True,
         'remove_antisense': True,
+        # the user's sample sheet with extra columns (RealSeq review #1; configuration route) and its group column
+        'sample_sheet': str(tmp_path / f'sample_sheet_{mode}.csv'),
+        'report_group': 'group',
     }
+    (tmp_path / f'sample_sheet_{mode}.csv').write_text(USER_SHEET)
     config_file = tmp_path / f'config_{mode}.yaml'
     config_file.write_text(yaml.safe_dump(config))
     return run, config_file

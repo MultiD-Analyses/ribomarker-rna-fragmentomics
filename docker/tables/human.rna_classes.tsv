@@ -1,0 +1,63 @@
+# RNA classes of the built-in human references (GRCh38, built 2026-07-07).
+# Columns: docker/scripts/refTables.py. Release 0.3.0. Ranks = parseMappings genetype_hierarchy of 0.2.x, with rank 10
+# for labels it did not list; groups = qcReport TYPE_GROUPS of 0.2.x; gene_table = collapseGenes DROP/EXCLUDE of 0.2.x.
+# Step S2: class ids and display names from the 0.3.0 translation map (miRNA-pre -> pre-miRNA,
+# unannotated -> genome_unannotated, RiboSpike-Short -> RiboSpike-Fragment, Unmapped -> unmapped). Rows that share a
+# class id agree on its class-level columns (display_name, group, display_order, positions, gene_table, counts_as_rrna).
+# Step S3a: the star arm (label miRNA-star, star tier) is class miRNA (TERMINOLOGY_REVIEW Q3, option b); its rank stays 10.
+# Step S3b: snRNA and snoRNA reads get _5p/_3p/_internal/_whole like tRNA (positions = yes; Q11 option b).
+# Step S3g: reads on UniVec contigs are the class UniVec (before: part of unannotated; TERMINOLOGY_REVIEW Q8).
+# Step S4 (report): groups protein_coding (was mRNA; RealSeq review #8), "genome: pre-mRNA, pre-tRNA" and "genome (unannotated)" (were one group "genome, precursors, introns"; #9).
+source_label	tier	class_id	display_name	group	display_order	rank_in_tier	positions	gene_table	counts_as_rrna	description
+UniVec	univec_bt1	UniVec	vector contaminants (UniVec)	UniVec	0	10	no	exclude	no	Reads aligned in the UniVec tier (NCBI UniVec: vector, adapter and linker sequences); no features
+RiboSpike-T1	ribospike	RiboSpike-T1	RiboSpike-T1	spike-ins	1	10	no	exclude	no	Spike-in RNA (RiboSpike), RNA Type 1 (5′-P, 3′-OH), full length
+RiboSpike-T2	ribospike	RiboSpike-T2	RiboSpike-T2	spike-ins	2	10	no	exclude	no	Spike-in RNA (RiboSpike), RNA Type 2 (5′-OH, 3′-OH), full length
+RiboSpike-T3	ribospike	RiboSpike-T3	RiboSpike-T3	spike-ins	3	10	no	exclude	no	Spike-in RNA (RiboSpike), RNA Type 3 (5′-OH, 3′-P), full length
+RiboSpike-T4	ribospike	RiboSpike-T4	RiboSpike-T4	spike-ins	4	10	no	exclude	no	Spike-in RNA (RiboSpike), RNA Type 4 (5′-P, 3′-P), full length
+RiboSpike-Short	ribospike	RiboSpike-Fragment	RiboSpike fragment	spike-ins	5	10	no	exclude	no	Spike-in reads more than 2 nt shorter than designed (fragments)
+miND	*	miND	miND spike-ins	spike-ins	6	10	no	yes	no	miND spike-in reads (contigs named #miND), if present in the references
+rRNA	rrna_bt1	rRNA	rRNA	rRNA	10	7	no	yes	yes	Ribosomal RNA: miRTrace rRNA sequences (18S, 28S, 5.8S, 5S)
+rRNA	ncrna	rRNA	rRNA	rRNA	10	7	no	yes	yes	Ribosomal RNA genes in the Ensembl ncRNA reference (5S, 5.8S)
+Mt_rRNA	ncrna	Mt_rRNA	Mt_rRNA	lncRNA and other ncRNA	11	6	no	yes	yes	Mitochondrial rRNA (Ensembl ncRNA reference)
+tRNA	trnas	tRNA	tRNA	tRNA	20	9	yes	yes	no	Transfer RNA (GtRNAdb, CCA added); reads labelled 5p, 3p, internal or whole
+Mt_tRNA	ncrna	Mt_tRNA	Mt_tRNA	lncRNA and other ncRNA	21	8	yes	yes	no	Mitochondrial tRNA (Ensembl ncRNA reference); reads labelled 5p, 3p, internal or whole
+miRNA	mirna	miRNA	miRNA	miRNA	30	6	no	yes	no	Mature microRNA, dominant arm (MirGeneDB)
+miRNA-star	star	miRNA	miRNA	miRNA	30	10	no	yes	no	miRNA star arm (MirGeneDB star tier): class miRNA since 0.3.0; the arm stays in the feature name (_3p*/_5p*)
+miRNA-pre	pre	pre-miRNA	pre-miRNA	miRNA	32	10	no	drop	no	microRNA precursor hairpin outside the arms (MirGeneDB); not in the gene table
+piRNA	pirna	piRNA	piRNA	piRNA	40	2	no	yes	no	Piwi-interacting RNA (piRBase gold set)
+snRNA	ncrna	snRNA	snRNA	lncRNA and other ncRNA	50	5	yes	yes	no	Small nuclear RNA (Ensembl ncRNA reference)
+snoRNA	ncrna	snoRNA	snoRNA	lncRNA and other ncRNA	51	5	yes	yes	no	Small nucleolar RNA (Ensembl ncRNA reference)
+scaRNA	ncrna	scaRNA	scaRNA	lncRNA and other ncRNA	52	5	no	yes	no	Small Cajal body-specific RNA (Ensembl ncRNA reference)
+misc_RNA	ncrna	misc_RNA	misc_RNA	lncRNA and other ncRNA	53	10	no	yes	no	Other small RNAs in the Ensembl ncRNA reference (e.g. 7SL, 7SK, Y RNA, vault RNA)
+lncRNA	ncrna	lncRNA	lncRNA	lncRNA and other ncRNA	54	2	no	yes	no	Long non-coding RNA (Ensembl ncRNA reference, one transcript per gene)
+protein_coding	cdna	protein_coding	protein_coding	protein_coding	60	1	no	yes	no	Mature protein-coding transcript: exons with UTRs (Ensembl cDNA, longest transcript per gene)
+pre-mRNA	genome	pre-mRNA	pre-mRNA	genome: pre-mRNA, pre-tRNA	70	1	no	drop	no	Reads in the span of a protein-coding gene on the genome that did not match its mature transcript (mostly intronic); not in the gene table
+pre-tRNA	genome	pre-tRNA	pre-tRNA	genome: pre-mRNA, pre-tRNA	71	4	no	drop	no	Reads at genomic tRNA loci (with leader, trailer or intron); not in the gene table
+unannotated	*	genome_unannotated	genome (unannotated)	genome (unannotated)	72	0	no	exclude	no	Reads aligned to the genome without an annotated feature (until 0.3.0 also the reads on UniVec contigs)
+unmapped	*	unmapped	unmapped	unmapped	90	10	no	exclude	no	Reads not aligned to any reference
+antisense	*	antisense	antisense	lncRNA and other ncRNA	91	10	no	yes	no	Antisense reads, only when remove_antisense is False
+Natural	*	Natural	natural RNA	read origin	92	10	no	exclude	no	readorigin table: reads not from spike-ins
+Unmapped	*	unmapped	unmapped	unmapped	90	10	no	exclude	no	readorigin table: reads not aligned
+sinRNA	*	sinRNA	sinRNA	lncRNA and other ncRNA	100	1	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+scdRNA	*	scdRNA	scdRNA	lncRNA and other ncRNA	101	1	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+sutRNA	*	sutRNA	sutRNA	lncRNA and other ncRNA	102	1	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+SINE	*	SINE	SINE	lncRNA and other ncRNA	103	3	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+LINE	*	LINE	LINE	lncRNA and other ncRNA	104	3	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+IG_V_pseudogene	*	IG_V_pseudogene	IG_V_pseudogene	lncRNA and other ncRNA	105	4	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+IG_V_gene	*	IG_V_gene	IG_V_gene	lncRNA and other ncRNA	106	5	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+IG_C_gene	*	IG_C_gene	IG_C_gene	lncRNA and other ncRNA	107	5	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+IG_J_gene	*	IG_J_gene	IG_J_gene	lncRNA and other ncRNA	108	5	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+TR_V_gene	*	TR_V_gene	TR_V_gene	lncRNA and other ncRNA	109	5	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+TR_V_pseudogene	*	TR_V_pseudogene	TR_V_pseudogene	lncRNA and other ncRNA	110	4	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+TR_D_gene	*	TR_D_gene	TR_D_gene	lncRNA and other ncRNA	111	5	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+TR_J_gene	*	TR_J_gene	TR_J_gene	lncRNA and other ncRNA	112	5	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+TR_C_gene	*	TR_C_gene	TR_C_gene	lncRNA and other ncRNA	113	5	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+IG_C_pseudogene	*	IG_C_pseudogene	IG_C_pseudogene	lncRNA and other ncRNA	114	4	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+TR_J_pseudogene	*	TR_J_pseudogene	TR_J_pseudogene	lncRNA and other ncRNA	115	4	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+IG_J_pseudogene	*	IG_J_pseudogene	IG_J_pseudogene	lncRNA and other ncRNA	116	4	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+IG_D_gene	*	IG_D_gene	IG_D_gene	lncRNA and other ncRNA	117	5	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+Y_RNA	*	Y_RNA	Y_RNA	lncRNA and other ncRNA	118	5	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+vault_RNA	*	vault_RNA	vault_RNA	lncRNA and other ncRNA	119	5	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+scRNA	*	scRNA	scRNA	lncRNA and other ncRNA	120	5	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank
+pre-miRNA	*	pre-miRNA	pre-miRNA	miRNA	32	4	no	drop	no	Not in the built-in references; kept so that own references using this label keep its rank
+star-miRNA	*	star-miRNA	star-miRNA	lncRNA and other ncRNA	122	4	no	yes	no	Not in the built-in references; kept so that own references using this label keep its rank

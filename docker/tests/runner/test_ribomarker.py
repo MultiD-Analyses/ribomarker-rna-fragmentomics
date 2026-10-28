@@ -72,6 +72,24 @@ def test_options_are_passed_on_and_files_mounted(tmp_path, docker):
     assert '--unlock' in tail and tail.count('--threads') == 1
 
 
+def test_tier_list_and_class_table_are_mounted(tmp_path, docker):
+    """0.3.0: --tiers and --rna-classes are files, mounted read-only like --config."""
+    sheet(tmp_path / 'in')
+    (tmp_path / 'my tables').mkdir()
+    (tmp_path / 'my tables' / 'tiers.csv').write_text('bowtie2,genome/human-genome,T\n')
+    (tmp_path / 'my tables' / 'classes.tsv').write_text('x\n')
+    code, lines, _ = ribomarker(docker, 'in/samples.csv', 'out', '--tiers', 'my tables/tiers.csv',
+                                '--rna-classes', 'my tables/classes.tsv', cwd=tmp_path)
+    assert code == 0
+    assert f'{tmp_path}/my tables/tiers.csv:/data/tiers/tiers.csv:ro' in mounts(lines)
+    assert f'{tmp_path}/my tables/classes.tsv:/data/rna-classes/classes.tsv:ro' in mounts(lines)
+    tail = lines[lines.index('run', 1):]
+    for pair in (['--tiers', '/data/tiers/tiers.csv'], ['--rna-classes', '/data/rna-classes/classes.tsv']):
+        assert any(tail[k:k + 2] == pair for k in range(len(tail))), pair
+    code, _, err = ribomarker(docker, 'in/samples.csv', 'out', '--rna-classes', 'none.tsv', cwd=tmp_path)
+    assert code == 2 and 'file not found' in err
+
+
 def test_demo_and_help(tmp_path, docker):
     code, lines, _ = ribomarker(docker, '--demo', 'demo', cwd=tmp_path)
     assert code == 0 and mounts(lines) == [f'{tmp_path}/demo:/data/output']

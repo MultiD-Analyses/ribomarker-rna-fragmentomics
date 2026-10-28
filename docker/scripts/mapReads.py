@@ -26,8 +26,9 @@ class MapReads(object):
         self.sampleDict = dict(zip(self.sampleinfo['sample'], self.sampleinfo['group']))
         self.fastqDict = dict(zip(self.sampleinfo['sample'], self.sampleinfo['fastq']))
 
-        # index paths relative to the dbpaths file are made absolute (dbPaths.py)
-        self.dbs = pd.DataFrame(read_dbpaths(self.args.dbs), columns=['map_cmd', 'db_path', 'retain'])
+        # relative index paths are made absolute: against --dbs-base (the references folder, for a replaced
+        # tier list) or the folder of the dbpaths file (dbPaths.py)
+        self.dbs = pd.DataFrame(read_dbpaths(self.args.dbs, getattr(self.args, 'dbs_base', None)), columns=['map_cmd', 'db_path', 'retain'])
 
         # Using a regular dictionary for logdata (avoiding lambda functions)
         self.logdata = {}
@@ -355,6 +356,7 @@ def main():
     ap.add_argument('-@','--threads', required=False, help='Number of threads to process paraellel fastq files with. Default=4', default=4)
     ap.add_argument('-o', '--output', required=True, help='Output prefix.')
     ap.add_argument('-d', '--dbs', required=True, help='Bowtie databases to map reads to. Format: map_cmd,db_path,T/F retain reads that map to db.')
+    ap.add_argument('--dbs-base', required=False, default=None, help='Folder that relative index paths in --dbs are resolved against. Default: the folder of the --dbs file.')
     ap.add_argument('-m', '--multimap', required=False, help='Number of multimapping loci a read can map to. Default=100', default=100)
     args = ap.parse_args()
     

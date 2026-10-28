@@ -8,13 +8,13 @@
 #   ribomarker --help                    all options
 #
 # Options: --threads N (default 8), --species NAME, --run-id NAME, --config FILE,
-# --references FOLDER, --unlock. Folders and files are your own paths; this script mounts them into
+# --references FOLDER, --tiers FILE, --rna-classes FILE, --unlock. Folders and files are your own paths; this script mounts them into
 # the container (the sheet's folder and the files read-only) and writes the docker run command.
-# Image: $RIBOMARKER_IMAGE (default dockermultid/ribomarker-rna-fragmentomics:0.2.0).
+# Image: $RIBOMARKER_IMAGE (default dockermultid/ribomarker-rna-fragmentomics:0.3.0).
 ###############################################################################
 set -euo pipefail
 
-IMAGE=${RIBOMARKER_IMAGE:-dockermultid/ribomarker-rna-fragmentomics:0.2.0}
+IMAGE=${RIBOMARKER_IMAGE:-dockermultid/ribomarker-rna-fragmentomics:0.3.0}
 DOCKER=${RIBOMARKER_DOCKER:-docker}       # the tests put a stand-in here that prints the command
 DEFAULT_THREADS=8
 
@@ -39,7 +39,7 @@ while (( $# )); do
       (( $# >= 2 )) || fail "$1 needs a value"
       if [[ $1 == --threads ]]; then threads=$2; else run_args+=("$1" "$2"); fi
       shift 2 ;;
-    --config)
+    --config|--tiers|--rna-classes)             # a file: mounted read-only as /data/<option>/<name>
       (( $# >= 2 )) || fail "$1 needs a file"
       [[ -f $2 ]] || fail "$1: file not found: $2"
       name=$(basename "$2"); kind=${1#--}

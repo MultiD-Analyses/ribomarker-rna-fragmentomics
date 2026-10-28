@@ -68,6 +68,8 @@ scriptdir = PIPELINE_DIR / "scripts"
 ribomarker_exec = os.path.join(scriptdir, "riboMarker")
 sys.path.insert(0, str(scriptdir))
 from dbPaths import find_dbpaths  # which dbpaths file to read
+import dbPaths
+import refTables                  # RNA class tables (release 0.3.0)
 
 if not os.path.exists(ribomarker_exec):
     ribomarker_exec = f"python {os.path.join(scriptdir, 'main.py')}"
@@ -84,6 +86,30 @@ if dbdir is None:
 dbpaths = find_dbpaths(dbdir, species)
 bedfile = os.path.join(dbdir, f"{species}.bed")
 
+# Tier list and RNA class table (release 0.3.0, refTables.py). A replaced tier list (config key tiers; the run
+# command's --tiers) keeps its relative index paths relative to the references folder and may list only tiers
+# of that folder. The class table: config key rna_classes (--rna-classes) > the references folder's own
+# <species>.rna_classes.tsv > docker/tables/<species>.rna_classes.tsv > docker/tables/default.rna_classes.tsv.
+# Both are copied into <run>/tables/ (rule run_tables) for provenance; the steps read the copies.
+tiers_file = config.get("tiers", None)
+if tiers_file:
+    if not os.path.exists(tiers_file):
+        raise ValueError(f"tiers: file not found: {tiers_file}")
+    _problems = dbPaths.check_tier_list(dbPaths.read_dbpaths(tiers_file, dbdir), dbPaths.read_dbpaths(dbpaths), species)
+    if _problems:
+        raise ValueError(f"tiers: {tiers_file} cannot be used: " + "; ".join(_problems))
+    dbpaths = tiers_file
+rna_classes = refTables.find_table(species, dbdir, config.get("rna_classes", None))
+class_table = refTables.ClassTable(rna_classes, species)    # a broken table stops here, before anything runs
+_unknown_tiers = class_table.unknown_tiers(dbPaths.tier_id(index, species)
+                                           for _, index, _ in dbPaths.read_dbpaths(dbpaths, dbdir))
+if _unknown_tiers:
+    print(f"WARNING: the RNA class table {rna_classes} names tiers that the tier list does not have: "
+          f"{', '.join(_unknown_tiers)}", file=sys.stderr)
+# Gene symbols and miRBase names (3f): docker/tables/<species>.gene_symbols.tsv when it exists; parseMappings fills
+# the columns only if the table was built for this references BED
+gene_symbols = refTables.gene_symbols_table(species)
+
 ###############################################################################
 # Load optional parameters from config
 ###############################################################################
@@ -92,7 +118,15 @@ collapse = config.get("collapse", True)  # Toggle to collapse reads before mappi
 multimap = config.get("multimap", 100)  # Maximum allowed multimapped reads
 threads = config.get("threads", 20)  # Number of processing threads
 subsample_amount = config.get("subsample_reads", 0)  # Number of reads to subsample
-keep_types    = config.get("keep_types", "all")     # 'all' or comma-separated, no spaces
+# Coverage filter: 'all' or comma-separated RNA class ids, no spaces. keep_types is its name before 0.3.0 (still
+# accepted, with a warning); old class names are translated with the class table (refTables.translate_keep).
+if "keep_types" in config:
+    print("WARNING: config key keep_types is called keep_classes since 0.3.0"
+          + ("; keep_classes is used" if "keep_classes" in config else "; its value is used"))
+for _old, _new in refTables.renamed_keep(config.get("keep_classes", config.get("keep_types", "all")), class_table):
+    print(f"WARNING: keep_classes: {_old} is a name before 0.3.0; the RNA class {_new} is kept (all of it)",
+          file=sys.stderr)
+keep_classes = refTables.translate_keep(config.get("keep_classes", config.get("keep_types", "all")), class_table)
 ###############################################################################
 ###############################################################################
 ###############################################################################
@@ -112,6 +146,8 @@ print(f"trim_only: {trim_only}")
 print(f"dump_unmapped: {dump_unmapped}")
 print(f"unique_only: {unique_only}")
 print(f"qc_report: {qc_report}")
+print(f"tiers: {dbpaths}")
+print(f"rna_classes: {rna_classes}")
 print("-" * 50)
 
 ###############################################################################
@@ -163,12 +199,17 @@ def get_pipeline_outputs(wildcards):
     # Always include the final BAM files
     targets.extend(sample_bamfiles_merged)
 
+    # The tier list and class table of the run (provenance)
+    targets.append(f"{output_prefix}/tables/rna_classes.tsv")
+    targets.append(f"{output_prefix}/tables/tiers.csv")
+    targets.append(f"{output_prefix}/tables/contig_tiers.tsv")
+
     # Add parse_mappings outputs
     targets.append(f"{output_prefix}/{output_prefix}-mappingstats.csv")
     targets.append(f"{output_prefix}/{output_prefix}-readcounts.csv")
-    targets.append(f"{output_prefix}/{output_prefix}-typecounts.csv")
-    targets.append(f"{output_prefix}/{output_prefix}-typelengths.csv")
-    targets.append(f"{output_prefix}/{output_prefix}-featuretypes.csv")
+    targets.append(f"{output_prefix}/{output_prefix}-classcounts.csv")
+    targets.append(f"{output_prefix}/{output_prefix}-classlengths.csv")
+    targets.append(f"{output_prefix}/{output_prefix}-featureclasses.csv")
     # The gene table needs remove-at-source counts: collapseGenes.py stops on _multimap/_antisense rows
     if remove_multimap and remove_antisense:
         targets.append(f"{output_prefix}/{output_prefix}-genecounts.csv")
@@ -404,6 +445,7 @@ rule map_reads:
         --threads {threads} \
         --output {output_prefix} \
         --dbs {input.dbs} \
+        --dbs-base {dbdir} \
         --multimap {multimap} \
         """
 
@@ -416,7 +458,7 @@ rule map_reads:
 rule bam_to_bedgraph:
     input:
         bam = f"{output_prefix}/alignments/{{sample}}.bam",
-        featuretypes = f"{output_prefix}/{output_prefix}-featuretypes.csv",
+        featureclasses = f"{output_prefix}/{output_prefix}-featureclasses.csv",
     output:
         bedgraph = f"{output_prefix}/bedgraph/{{sample}}.bedgraph"
     threads: threads
@@ -427,12 +469,34 @@ rule bam_to_bedgraph:
         --step coverage \
         --input {input.bam} \
         --output {output.bedgraph} \
-        --featuretypes {input.featuretypes} \
-        --keep-types {keep_types}
+        --featureclasses {input.featureclasses} \
+        --keep-classes {keep_classes:q}
         """
 
 
 
+
+
+###############################################################################
+# Rule: copy the tier list and the RNA class table into the run folder
+###############################################################################
+# The steps read the copies, so a rerun of a step uses the table the run started with; qcCollect records
+# the sources (run_config.yaml: rna_classes, tiers) and checksums (prov.class_tables).
+
+rule run_tables:
+    input:
+        rna_classes = rna_classes,
+        tiers = dbpaths,
+    output:
+        rna_classes = f"{output_prefix}/tables/rna_classes.tsv",
+        tiers = f"{output_prefix}/tables/tiers.csv",
+        contig_tiers = f"{output_prefix}/tables/contig_tiers.tsv",
+    run:
+        shutil.copyfile(input.rna_classes, output.rna_classes)
+        shutil.copyfile(input.tiers, output.tiers)
+        # which tier each reference sequence belongs to (bowtie-inspect -n): reads on UniVec contigs without a
+        # feature become the class UniVec in parseMappings (3g)
+        dbPaths.write_contig_tiers(dbPaths.read_dbpaths(input.tiers, dbdir), species, output.contig_tiers)
 
 
 ###############################################################################
@@ -444,12 +508,15 @@ rule parse_mappings:
         samples = sample_downstream,        
         mergedbamfiles=sample_bamfiles_merged,
         bedfile = bedfile,
+        rna_classes = f"{output_prefix}/tables/rna_classes.tsv",
+        contig_tiers = f"{output_prefix}/tables/contig_tiers.tsv",
+        gene_symbols = gene_symbols or [],
     output:
         f'{output_prefix}/{output_prefix}-mappingstats.csv',
         f'{output_prefix}/{output_prefix}-readcounts.csv',
-        f'{output_prefix}/{output_prefix}-typecounts.csv',
-        f'{output_prefix}/{output_prefix}-typelengths.csv',
-        f'{output_prefix}/{output_prefix}-featuretypes.csv',
+        f'{output_prefix}/{output_prefix}-classcounts.csv',
+        f'{output_prefix}/{output_prefix}-classlengths.csv',
+        f'{output_prefix}/{output_prefix}-featureclasses.csv',
         bamfiles=sample_bamfiles,
         bedgraph_full=bedgraph_full,
     threads: threads
@@ -457,6 +524,7 @@ rule parse_mappings:
         unmapped_flag = "--unmapped" if dump_unmapped == True else "",
         remove_mm_flag = "--remove-multimap" if remove_multimap else "",
         remove_as_flag = "--remove-antisense" if remove_antisense else "",
+        symbols_flag = f"--gene-symbols {gene_symbols}" if gene_symbols else "",
     shell:
         """
         {ribomarker_exec} \
@@ -465,6 +533,9 @@ rule parse_mappings:
         --threads {threads} \
         --output {output_prefix} \
         --bed {input.bedfile} \
+        --rna-classes {input.rna_classes} \
+        --contig-tiers {input.contig_tiers} \
+        {params.symbols_flag} \
         --bampath {output_prefix}/alignments \
         -q \
         {params.unmapped_flag} \
@@ -517,7 +588,8 @@ rule count_ribospike:
 rule collapse_genes:
     input:
         readcounts   = f"{output_prefix}/{output_prefix}-readcounts.csv",
-        featuretypes = f"{output_prefix}/{output_prefix}-featuretypes.csv",
+        featureclasses = f"{output_prefix}/{output_prefix}-featureclasses.csv",
+        rna_classes = f"{output_prefix}/tables/rna_classes.tsv",
     output:
         f"{output_prefix}/{output_prefix}-genecounts.csv",
         f"{output_prefix}/{output_prefix}-genelengths.csv",
@@ -526,7 +598,8 @@ rule collapse_genes:
         {ribomarker_exec} \
         --script collapseGenes -- \
         --readcounts {input.readcounts} \
-        --featuretypes {input.featuretypes} \
+        --featureclasses {input.featureclasses} \
+        --rna-classes {input.rna_classes} \
         --output {output_prefix}/{output_prefix}
         """
 
@@ -552,7 +625,9 @@ rule qc_collect:
                          "samples": config.get("samples", "samples.csv"),
                          "collapse": collapse, "subsample_reads": subsample_amount,   # defaults as resolved above
                          "remove_multimap": remove_multimap, "remove_antisense": remove_antisense,
-                         "count_ribospike": count_ribospike})
+                         "count_ribospike": count_ribospike,
+                         "rna_classes": rna_classes, "tiers": dbpaths,      # sources; copies in tables/
+                         "gene_symbols": gene_symbols})
         for key in ("host_input_dir", "host_assets_dir"):   # Docker launcher only: host paths of the user,
             resolved.pop(key, None)                          # not needed by the collector, kept out of qc/
         with open(output.run_config, "w") as f:

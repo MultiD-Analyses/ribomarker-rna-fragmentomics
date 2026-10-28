@@ -6,7 +6,7 @@ A git commit alone does not identify the code of a run: a run made with uncommit
 commit that does not contain them (it happened: the level B/C runs of 2026-10-06 recorded 25e649c, but
 their code was committed later as 3f6c30e). The fingerprint is computed from the files themselves, so
 equal fingerprints mean the same code. Files (relative to docker/), see CODE_FILES:
-    Snakefile, VERSION, env.lock.txt, scripts/*.py, qc/*.yaml, qc/logos/*.png
+    Snakefile, VERSION, env.lock.txt, scripts/*.py, qc/*.yaml, qc/*.css, qc/*.js, qc/logos/*.png, tables/*.tsv (since 0.3.0)
 Line endings are normalised (CRLF -> LF) in text files, so Windows and Linux checkouts agree. The
 Docker image computes it at build time from the same files (Dockerfile, file /pipeline/CODE_FINGERPRINT).
 
@@ -19,7 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-CODE_FILES = ['Snakefile', 'VERSION', 'env.lock.txt', 'scripts/*.py', 'qc/*.yaml', 'qc/logos/*.png']
+CODE_FILES = ['Snakefile', 'VERSION', 'env.lock.txt', 'scripts/*.py', 'qc/*.yaml', 'qc/*.css', 'qc/*.js', 'qc/logos/*.png', 'tables/*.tsv']
 DOCKER_DIR = Path(__file__).resolve().parents[1]
 
 

@@ -1,0 +1,48 @@
+{
+  "builder": "make_gene_symbols.py",
+  "builder_version": "v1",
+  "builder_sha256": "881e04605c3e4ca1eefb691035e2add2d30e6d787e66f7b1aaee88c17457897e",
+  "built_utc": "2026-10-27T08:27:18Z",
+  "species": "mouse",
+  "references_bed": "docker/assets/mouse.bed",
+  "references_bed_sha256": "bfef331d5c039b4a7a12d5f794b6bc6e54540ef4a526b54b300378bb011c0168",
+  "sources": {
+    "mgi": {
+      "downloaded_utc": "2026-10-26T09:58:06Z (file time; reused download)",
+      "download_bytes": 16192622,
+      "url": "https://www.informatics.jax.org/downloads/reports/MRK_ENSEMBL.rpt",
+      "version": "MGI MRK_ENSEMBL.rpt (current; CC BY 4.0)",
+      "sha256": "bb0f1d8a82983a492adfdd9e74a39f61d3af6a1abca0de480ddd3088f46e6502"
+    },
+    "gtf": {
+      "downloaded_utc": "2026-10-26T09:58:26Z (file time; reused download)",
+      "download_bytes": 107856522,
+      "url": "https://ftp.ensembl.org/pub/release-116/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz",
+      "version": "Ensembl release-116 / GRCm39",
+      "sha256": "5c29fd9e3157cf40fdbbf76ab25bfe7f79aa61313e0b672664ddb0cb251c02e1"
+    },
+    "mirgenedb_gff": {
+      "downloaded_utc": "2026-10-26T09:58:26Z (file time; reused download)",
+      "download_bytes": 94823,
+      "url": "https://mirgenedb.org/gff/mmu?sort=pos&all=1",
+      "version": "MirGeneDB 3.0",
+      "sha256": "2a8b09ad296d989e7a9da39f4a19a707297e07ed2d800ccc361d725531e1d204"
+    },
+    "mirbase_mature": {
+      "downloaded_utc": "2026-10-27T08:14:30Z (file time; reused download)",
+      "download_bytes": 6127225,
+      "url": "https://mirbase.org/download/mature.fa",
+      "version": "miRBase release 23.1 (Sep 2026; public domain)",
+      "sha256": "52d69eeb3c23c5ed0f66c8c9f24e1ad2cd94cc34e72e4fc376c0dd438d2779ff"
+    },
+    "mirbase_hairpin": {
+      "downloaded_utc": "2026-10-27T08:14:30Z (file time; reused download)",
+      "download_bytes": 7650549,
+      "url": "https://mirbase.org/download/hairpin.fa",
+      "version": "miRBase release 23.1 (Sep 2026; public domain)",
+      "sha256": "0b315c6071e84ee3bd8357c9696845f99b55842ec1cf8a83116fa01749467a5b"
+    }
+  },
+  "features_with_values": 80752,
+  "bed_features": 167715
+}

@@ -31,23 +31,25 @@ module_order:
 
 # Order of the RiboMarker sections (lowest first).
 report_section_order:
-  ribomarker_overview: {order: 1}
-  ribomarker_read_fate: {order: 2}
-  ribomarker_tiers: {order: 3}
-  ribomarker_composition: {order: 4}
-  ribomarker_multimapping: {order: 5}
-  ribomarker_lengths: {order: 6}
-  ribomarker_spike_table: {order: 7}
-  ribomarker_spike_offsets: {order: 8}
-  ribomarker_spike_recovery: {order: 9}
-  ribomarker_counts: {order: 10}
+  ribomarker_samples: {order: 1}
+  ribomarker_guide: {order: 2}
+  ribomarker_general_stats: {order: 3}
+  ribomarker_read_fate: {order: 4}
+  ribomarker_tiers: {order: 5}
+  ribomarker_composition: {order: 6}
+  ribomarker_multimapping: {order: 7}
+  ribomarker_lengths: {order: 8}
+  ribomarker_spike_table: {order: 10}
+  ribomarker_spike_offsets: {order: 11}
+  ribomarker_spike_recovery: {order: 12}
+  ribomarker_counts: {order: 13}
+  ribomarker_tables: {order: 15}
   # Provenance is a section of its own at the end of the report, just above MultiQC's Software Versions
   # (which lists the tool versions, from qc/mqc/ribomarker_mqc_versions.yml). MultiQC places higher
   # values higher; 'after' gives the Software Versions value + 1, i.e. directly above it.
   ribomarker_provenance: {after: multiqc_software_versions}
 
-# General statistics: only the RiboMarker columns are shown by default (headline numbers come
-# from the QC collector); the tool columns can be switched on with "Configure columns".
-table_columns_visible:
-  fastp: false
-  cutadapt: false
+# No MultiQC General Statistics: its place is fixed directly under the header, and the report shows
+# Samples and How to read this report first (Martin 2026-10-26). The RiboMarker headline numbers are a
+# section of their own (ribomarker_general_stats); the fastp and cutadapt numbers are in their sections.
+skip_generalstats: true

@@ -1,0 +1,12 @@
+gene,length_nt,rna_class
+BTG3,1981.0,protein_coding
+ETS2,4142.0,protein_coding
+H19,1322.0,lncRNA
+Homo_sapiens_18S_1,1289.0,rRNA
+Homo_sapiens_tRNA-Ala-CGC-3,75.0,tRNA
+Homo_sapiens_tRNA-Leu-CAG-1,86.0,tRNA
+Hsa-Mir-21_5p,24.0,miRNA
+MRPL39,2234.0,protein_coding
+SYNTH-LNC-edge,300.0,lncRNA
+SYNTH-SNORD-minus,300.0,snoRNA
+piR-hsa-9,30.0,piRNA

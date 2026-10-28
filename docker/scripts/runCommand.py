@@ -1,7 +1,8 @@
 """run: the whole pipeline on the samples of a sample sheet, with one command.
 
   python docker/scripts/main.py run SHEET OUTPUT [--species NAME] [--threads N]
-                                    [--config FILE] [--run-id NAME] [--references FOLDER] [--unlock]
+                                    [--config FILE] [--run-id NAME] [--references FOLDER]
+                                    [--tiers FILE] [--rna-classes FILE] [--unlock]
 
 run reads the samples from SHEET (a CSV file in the folder of the FASTQ files), checks everything it can
 before starting, writes the pipeline's sample sheet and the configuration into OUTPUT/<run id>/, runs the pipeline with OUTPUT as the working folder and
@@ -32,6 +33,7 @@ import yaml
 import checkTruth
 import codeFingerprint
 import dbPaths
+import refTables
 
 PIPELINE_DIR = Path(os.environ.get('RIBOMARKER_PIPELINE_DIR', Path(__file__).resolve().parents[1]))
 REFERENCES = Path(os.environ.get('RIBOMARKER_REFERENCES', PIPELINE_DIR / 'assets'))
@@ -48,14 +50,16 @@ COLUMNS = ('sample', 'fastq_file', 'fastq_file2')
 GROUP = 'RiboMarker'                                    # the sample sheet's group column (not used)
 
 DEFAULTS = {                                            # today's validated settings
-    'remove_multimap': True, 'remove_antisense': True, 'collapse': False, 'keep_types': 'all',
+    'remove_multimap': True, 'remove_antisense': True, 'collapse': False, 'keep_classes': 'all',
     'qc_report': True, 'trim_fastq': True, 'count_ribospike': True,
     'multimap': 100, 'trim_only': False, 'subsample_reads': 0,
 }
-ALLOWED_KEYS = {'multimap', 'keep_types', 'remove_multimap', 'remove_antisense',
-                'count_ribospike', 'qc_report'}         # --config under run
+ALLOWED_KEYS = {'multimap', 'keep_classes', 'keep_types', 'remove_multimap', 'remove_antisense',
+                'count_ribospike', 'qc_report', 'tiers', 'rna_classes', 'report_group'}   # --config under run
+FILE_KEYS = {'tiers', 'rna_classes'}    # a file; in Docker give it with --tiers / --rna-classes (mounted)
 BOOLEAN_KEYS = {'remove_multimap', 'remove_antisense', 'count_ribospike', 'qc_report'}
-TYPE_LIST = re.compile(r'^[A-Za-z0-9_.+-]+(,[A-Za-z0-9_.+-]+)*$')   # keep_types: all, or miRNA,tRNA,...
+TYPE_LIST = re.compile(r'^[A-Za-z0-9_.+-]+(,[A-Za-z0-9_.+-]+)*$')   # keep_classes: all, or miRNA,tRNA,...
+OLD_KEYS = {'keep_types': 'keep_classes'}   # names before 0.3.0: accepted with a warning
 SET_BY_RUN = {'dbdir', 'input_dir', 'output_prefix', 'samples', 'host_input_dir', 'host_assets_dir',
               'species', 'threads', 'paired_end', 'report_title'}
 
@@ -170,6 +174,13 @@ def read_sheet(path):
     return [(name, r1, r2) for _, name, r1, r2 in rows], ('pe' if with_r2 else 'se')
 
 
+def sheet_columns(path):
+    """The column names of a sample sheet (first row), read as read_sheet reads it."""
+    first = Path(path).read_text(encoding='utf-8-sig').splitlines()[0]
+    delimiter = ';' if first.count(';') > first.count(',') else ','
+    return [c.strip() for c in next(csv.reader([first], delimiter=delimiter))]
+
+
 def sheet_rows(samples):
     """Rows of the pipeline's own sample sheet, in the order of the user's sheet: sample, group, R1[, R2]."""
     return [[name, GROUP, r1] + ([r2] if r2 else []) for name, r1, r2 in samples]
@@ -201,8 +212,12 @@ def value_problem(key, value):
         return f'{value!r} is not True or False (write it without quotes)'
     if key == 'multimap' and not (is_whole_number and value >= 1):
         return f'{value!r} is not a whole number of 1 or more'
-    if key == 'keep_types' and not (isinstance(value, str) and TYPE_LIST.match(value)):
-        return f'{value!r} is not "all" or RNA types separated by commas without spaces (e.g. miRNA,tRNA)'
+    if key in ('keep_classes', 'keep_types') and not (isinstance(value, str) and TYPE_LIST.match(value)):
+        return f'{value!r} is not "all" or RNA classes separated by commas without spaces (e.g. miRNA,tRNA)'
+    if key in FILE_KEYS and not isinstance(value, str):
+        return f'{value!r} is not a file path'
+    if key == 'report_group' and not (isinstance(value, str) and value):
+        return f'{value!r} is not the name of a column of the sample sheet'
     return None
 
 
@@ -235,13 +250,24 @@ def pipeline_config(settings, *, input_dir, references, run_id, sheet, species, 
 
 
 # ----------------------------------------------------------------------------- checks before starting
-def check_references(references, species):
-    """The tiers of the species exist; returns warnings (e.g. no MANIFEST)."""
+def check_references(references, species, tiers_file=None):
+    """The tiers of the species exist; returns warnings (e.g. no MANIFEST). tiers_file: a replaced tier list,
+    whose relative index paths are resolved against the references folder (dbPaths.py)."""
     try:
         dbpaths = dbPaths.find_dbpaths(str(references), species)
     except FileNotFoundError as error:
         raise RunError(str(error))
-    missing = [index for _, index, _ in dbPaths.read_dbpaths(dbpaths)
+    tiers = dbPaths.read_dbpaths(dbpaths)
+    if tiers_file:
+        try:
+            replaced = dbPaths.read_dbpaths(tiers_file, str(references))
+        except ValueError:
+            raise RunError(f'--tiers {tiers_file}: every line must be map_cmd,index,retain (as in {dbpaths})')
+        problems = dbPaths.check_tier_list(replaced, tiers, species)
+        if problems:
+            raise RunError(f'--tiers {tiers_file} cannot be used:\n  ' + '\n  '.join(problems))
+        tiers = replaced
+    missing = [index for _, index, _ in tiers
                if not any(os.path.exists(index + ext) for ext in ('.1.bt2', '.1.ebwt', '.1.bt2l'))]
     bed = Path(references) / f'{species}.bed'
     if missing or not bed.exists():
@@ -250,6 +276,29 @@ def check_references(references, species):
     if not (Path(references) / f'MANIFEST_{species}.json').exists():
         return [f'no MANIFEST_{species}.json in {references}: the references cannot be identified in the report']
     return []
+
+
+def check_class_table(references, species, explicit=None, tiers_file=None):
+    """The class table the run will use (refTables.find_table) can be read; returns (path, warnings): BED labels
+    the table does not cover (they become their own class, rank 10), and tiers it names that the run's tier list
+    (tiers_file, or the references folder's own) does not have."""
+    try:
+        path = refTables.find_table(species, str(references), explicit)
+        classes = refTables.ClassTable(path, species)
+    except (refTables.TableError, OSError) as error:
+        raise RunError(f'RNA class table: {error}')
+    with open(Path(references) / f'{species}.bed') as f:
+        labels = {line.split('\t')[4] for line in f if line.count('\t') >= 4}
+    missing = classes.check_labels(labels, quiet=True)
+    warnings = [f'{len(missing)} label(s) of {species}.bed not in the RNA class table {Path(path).name}: '
+                f'{", ".join(missing)}; each is counted as its own class'] if missing else []
+    tiers = dbPaths.read_dbpaths(tiers_file, str(references)) if tiers_file else \
+        dbPaths.read_dbpaths(dbPaths.find_dbpaths(str(references), species))
+    unknown = classes.unknown_tiers(dbPaths.tier_id(index, species) for _, index, _ in tiers)
+    if unknown:
+        warnings.append(f'the RNA class table {Path(path).name} names tiers that the tier list does not have: '
+                        f'{", ".join(unknown)} (misspelt, or a table for other references)')
+    return path, warnings
 
 
 def broken_gzip(files, threads):
@@ -336,9 +385,11 @@ Local (conda environment ribomarker active):
 
 SHEET is a CSV file in the folder of the FASTQ files, with one row per sample and the columns
 sample (the name used in all results), fastq_file (the reads, R1) and, for paired-end reads,
-fastq_file2 (R2); file names without a path. Further columns (e.g. clinical data) are copied to the
-results unchanged. Comma or semicolon separated. The folder is only read; the results go into
-OUTPUT/<run id>/.
+fastq_file2 (R2); file names without a path. Further columns (e.g. group, sex, age) are copied to the
+results unchanged and shown in the QC report's sample table, so leave out what the report's readers
+should not see; the report can colour the samples by any of these columns, and report_group: COLUMN
+in the --config file chooses the first. Comma or semicolon separated. The folder is only read; the
+results go into OUTPUT/<run id>/.
 
 Repeat the same command to resume an unfinished run; a finished run is refused. Ctrl-C stops
 a run cleanly.
@@ -374,6 +425,10 @@ def parse_args(argv):
                     + ', '.join(sorted(ALLOWED_KEYS)))
     ap.add_argument('--run-id', help='name of the run folder and the report title (default: ribomarker)')
     ap.add_argument('--references', default=str(REFERENCES), help='references folder (default: %(default)s)')
+    ap.add_argument('--tiers', help='advanced: a tier list (map_cmd,index,retain per line) replacing the references '
+                                    "folder's <species>.dbpaths.csv; index paths relative to the references folder")
+    ap.add_argument('--rna-classes', help='advanced: an RNA class table (tab-separated, columns as in '
+                                          'docker/tables/human.rna_classes.tsv) replacing the default one')
     ap.add_argument('--unlock', action='store_true',
                     help='remove a lock left by an interrupted run (only if no other run uses OUTPUT)')
     return ap.parse_args(argv)
@@ -407,7 +462,38 @@ def prepare(args):
                        'species give your own references with --references FOLDER (user guide, "Own references")')
 
     settings = user_config(args.config)
-    warnings = check_references(references, args.species)
+    renamed = []
+    for old, new in OLD_KEYS.items():
+        if old in settings:
+            value = settings.pop(old)
+            settings.setdefault(new, value)            # the new key wins if both are given
+            renamed.append(f'--config: {old} is called {new} since 0.3.0; '
+                           + (f'{new} is used' if settings[new] != value else 'its value is used'))
+    for key, option in (('tiers', getattr(args, 'tiers', None)), ('rna_classes', getattr(args, 'rna_classes', None))):
+        if option:                                 # the command-line option wins over the --config key
+            settings[key] = option
+        if settings.get(key):
+            if not Path(settings[key]).is_file():
+                raise RunError(f'{key}: file not found: {settings[key]}'
+                               + (' (in Docker give it with --tiers / --rna-classes, which mount it)'
+                                  if not option else ''))
+            settings[key] = str(Path(settings[key]).resolve())
+    if settings.get('report_group'):               # the column must exist (the report groups samples by it)
+        columns = sheet_columns(sheet_path)
+        if settings['report_group'] not in columns:
+            raise RunError(f"report_group: {settings['report_group']!r} is not a column of the sample sheet "
+                           f"(columns: {', '.join(columns)})")
+    warnings = renamed + check_references(references, args.species, settings.get('tiers'))
+    classes_path, class_warnings = check_class_table(references, args.species, settings.get('rna_classes'),
+                                                     settings.get('tiers'))
+    warnings += class_warnings
+    if settings.get('keep_classes'):              # old class names are translated (D2: with a warning)
+        table = refTables.ClassTable(classes_path, args.species)
+        for old, new in refTables.renamed_keep(settings['keep_classes'], table):
+            warnings.append(f'keep_classes: {old} is a name before 0.3.0; the RNA class {new} is kept (all of it)')
+    own_tiers = dbPaths.find_dbpaths(str(references), args.species)
+    tables = {'rna_classes': refTables.provenance(classes_path, refTables.default_table(args.species)),
+              'tiers': refTables.provenance(settings.get('tiers') or own_tiers, own_tiers)}
     if args.species == 'mouse':
         warnings.append('mouse references not validated on mouse data: the numbers of this run '
                         'have not been compared with a known mouse result')
@@ -455,7 +541,7 @@ def prepare(args):
     return dict(input_dir=input_dir, sheet_path=sheet_path, output=output, run_dir=run_dir, run_id=run_id,
                 title=title, mode=mode, samples=samples, warnings=warnings, threads=threads, state=state,
                 sheet_text=sheet_text, config_text=config_text, first_start=first_start,
-                input_bytes=input_bytes, minutes=minutes)
+                input_bytes=input_bytes, minutes=minutes, tables=tables)
 
 
 def pipeline_version():
@@ -624,7 +710,7 @@ def main(argv=None):
     shutil.copyfile(p['sheet_path'], p['run_dir'] / 'sample_sheet.csv')        # the user's sheet, unchanged
     write_status(p['run_dir'], run_id=p['run_id'], title=p['title'], first_started_utc=p['first_start'],
                  started_utc=utc_now(), status='running', samples=len(p['samples']), mode=p['mode'],
-                 pipeline_version=pipeline_version())
+                 pipeline_version=pipeline_version(), tables=p['tables'])
     say(f"{'resuming' if p['state'] == 'resume' else 'starting'} {p['title']}: {len(p['samples'])} samples "
         f"({'paired-end' if p['mode'] == 'pe' else 'single-end'}), {size_text(p['input_bytes'])} of FASTQ files, "
         f"{p['threads']} threads; roughly {duration_text(p['minutes'])} (keep the computer awake)")

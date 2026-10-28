@@ -5,8 +5,8 @@ docker/assets/*
 !docker/assets/PROVENANCE_human.md
 !docker/assets/MANIFEST_mouse.json
 !docker/assets/PROVENANCE_mouse.md
-staging/
-results/
+/staging/
+/results/
 test/synthetic_qc/work/
 .snakemake/
 __pycache__/

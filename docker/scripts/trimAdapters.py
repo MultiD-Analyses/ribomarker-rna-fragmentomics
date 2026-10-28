@@ -142,6 +142,7 @@ class TrimReads():
         # sys.exit()
 
         outdata = pd.DataFrame.from_dict(self.sampleinfo, orient='index')
+        outdata.index.name = 'sample'          # first column named (release 0.3.0; unnamed before)
         outdata.to_csv(f'{self.args.output}/{self.args.output}-trimstats.csv')
         print('-' * 50)
         print(f'Trimming results saved to {self.args.output}/{self.args.output}-trimstats.csv')

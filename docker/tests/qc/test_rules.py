@@ -95,15 +95,15 @@ DAMAGE = [
     ('alignments/logs/S1.univec_bt1.log', drop_unaligned_line, 'pe se'),
     ('metrics/S1.log', delete, 'pe se'),
     ('results/{run}-mappingstats.csv', garble_second_line, 'pe se'),
-    ('results/{run}-typecounts.csv', delete, 'pe se'),
-    ('results/{run}-typecounts.csv', garble_second_line, 'pe se'),
-    ('results/{run}-typelengths.csv', cut_in_half, 'pe se'),
-    ('results/{run}-biotypedistinctseqs.csv', delete, 'pe se'),
+    ('results/{run}-classcounts.csv', delete, 'pe se'),
+    ('results/{run}-classcounts.csv', garble_second_line, 'pe se'),
+    ('results/{run}-classlengths.csv', cut_in_half, 'pe se'),
+    ('results/{run}-classdistinctseqs.csv', delete, 'pe se'),
     ('results/{run}-genecounts.csv', garble_second_line, 'pe se'),
     ('results/{run}-genelengths.csv', delete, 'pe se'),
-    ('ribospike/results/{run}-ribotype.csv', delete, 'pe se'),
+    ('ribospike/results/{run}-readorigin.csv', delete, 'pe se'),
     ('ribospike/results/{run}-ribospike.csv', garble_second_line, 'pe se'),
-    ('ribospike/results/{run}-ribolengths.csv', cut_in_half, 'pe se'),
+    ('ribospike/results/{run}-spikelengths.csv', cut_in_half, 'pe se'),
     ('ribospike/results/{run}-ribospikeends.csv', garble_second_line, 'pe se'),
     ('ribospike/results/{run}-ribospikeends_exact.csv', delete, 'pe se'),
 ]
@@ -176,18 +176,18 @@ def test_single_field_metrics_equal_their_source(collected):
 
 
 def test_floor_reads_are_the_reads_of_15_to_17_nt(collected):
-    """assign.type.{biotype}.floor_reads recomputed from the fixture's length table; the exploratory
+    """assign.class.{rna_class}.floor_reads recomputed from the fixture's length table; the exploratory
     sample S3 has the 16- and 17-nt reads (C32-C35) that the truth samples lack."""
     mode, report = collected
     found = values(report)
-    with open(FIXTURES / f'levelA_{mode}' / 'results' / f'levelA_{mode}-typelengths.csv', newline='') as f:
+    with open(FIXTURES / f'levelA_{mode}' / 'results' / f'levelA_{mode}-classlengths.csv', newline='') as f:
         rows = list(csv.reader(f))
     lengths = [int(length) for length in rows[0][2:]]
     for sample, biotype, *counts in rows[1:]:
         if biotype != 'unmapped':
             expected = sum(int(float(n)) for length, n in zip(lengths, counts) if 15 <= length <= 17)
-            assert found[(sample, f'assign.type.{biotype}.floor_reads')] == expected, f'{sample} {biotype}'
-    assert any(found[(s, f'assign.type.{b}.floor_reads')] for s, b, *_ in rows[1:] if s == 'S3' and b != 'unmapped')
+            assert found[(sample, f'assign.class.{biotype}.floor_reads')] == expected, f'{sample} {biotype}'
+    assert any(found[(s, f'assign.class.{b}.floor_reads')] for s, b, *_ in rows[1:] if s == 'S3' and b != 'unmapped')
 
 
 # ----------------------------------------------------------------------------- register A4, warnings, layout

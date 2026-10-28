@@ -123,7 +123,7 @@ class CountRiboSpike(object):
                 if read.is_unmapped:
                     count_value = self.get_read_count(read_name)
                     read_mappability['Unmapped'] += count_value
-                    read_biotype_dict['Unmapped'] += count_value
+                    read_biotype_dict['unmapped'] += count_value
                     if self.args.unmapped:
                         unmapped_bam.write(read)
                         unmap_sequences[read.query_sequence] += count_value
@@ -132,7 +132,7 @@ class CountRiboSpike(object):
                 if read.query_length < 15:
                     count_value = self.get_read_count(read_name)
                     read_mappability['Unmapped'] += count_value
-                    read_biotype_dict['Unmapped'] += count_value
+                    read_biotype_dict['unmapped'] += count_value
                     if self.args.unmapped:
                         unmapped_bam.write(read)
                         unmap_sequences[read.query_sequence] += count_value
@@ -191,9 +191,9 @@ class CountRiboSpike(object):
         ## (found 2026-10-05 by the synthetic sample S3, whose reads all map)
         read_mappability_df = read_mappability_df.reindex(columns=['Mapped', 'Unmapped'], fill_value=0)
 
-        read_biotype_df = pd.DataFrame(list(read_biotype_dict.items()), columns=['biotype', sample]).set_index('biotype')
+        read_biotype_df = pd.DataFrame(list(read_biotype_dict.items()), columns=['read_origin', sample]).set_index('read_origin')
 
-        read_ribospike_df = pd.DataFrame(list(ribospike_dict.items()), columns=['ribospike', sample]).set_index('ribospike')
+        read_ribospike_df = pd.DataFrame(list(ribospike_dict.items()), columns=['spike', sample]).set_index('spike')
 
         if self.args.unmapped:
             unmapped_df = pd.DataFrame(list(unmap_sequences.items()), columns=['sequence', sample]).set_index('sequence').T
@@ -207,8 +207,8 @@ class CountRiboSpike(object):
         ## sort the columns
         read_length_df = read_length_df.reindex(sorted(read_length_df.columns), axis=1).T
         read_length_df['sample'] = sample
-        read_length_df = read_length_df.reset_index().rename(columns={'index':'biotype'})
-        read_length_df = read_length_df[['sample', 'biotype'] + [i for i in range(0, 71)]]
+        read_length_df = read_length_df.reset_index().rename(columns={'index':'spike_type'})
+        read_length_df = read_length_df[['sample', 'spike_type'] + [i for i in range(0, 71)]]
 
         return [read_mappability_df, read_biotype_df, read_ribospike_df, end_df, read_length_df, end_exact_df]
 
@@ -219,7 +219,7 @@ class CountRiboSpike(object):
         for spikelength, positions in end_dict.items():
             for end, counts in positions.items():
                 enddata.append([sample, spikelength, end, counts['A'], counts['C'], counts['G'], counts['T'], counts['N']])
-        return pd.DataFrame(enddata, columns=['sample', 'ribospike', 'end', 'A', 'C', 'G', 'T', 'N'])
+        return pd.DataFrame(enddata, columns=['sample', 'spike', 'end', 'A', 'C', 'G', 'T', 'N'])
 
     def plot_ribospike_ends(self):
         '''
@@ -237,8 +237,8 @@ class CountRiboSpike(object):
                              '-':'grey'}
 
         enddata = pd.read_csv(f'{self.args.output}/ribospike/{self.args.output}-ribospikeends.csv')
-        enddata['spikelength'] = enddata['ribospike'].str.split('-').str[1].astype(int)
-        enddata['spiketype'] = enddata['ribospike'].str.split('-').str[2]
+        enddata['spikelength'] = enddata['spike'].str.split('-').str[1].astype(int)
+        enddata['spiketype'] = enddata['spike'].str.split('-').str[2]
 
         samplelist = enddata['sample'].drop_duplicates().tolist()
 
@@ -300,8 +300,8 @@ class CountRiboSpike(object):
                              '-':'grey'}
 
         enddata = pd.read_csv(f'{self.args.output}/ribospike/{self.args.output}-ribospikeends.csv')
-        enddata['spikelength'] = enddata['ribospike'].str.split('-').str[1].astype(int)
-        enddata['spiketype'] = enddata['ribospike'].str.split('-').str[2]
+        enddata['spikelength'] = enddata['spike'].str.split('-').str[1].astype(int)
+        enddata['spiketype'] = enddata['spike'].str.split('-').str[2]
         enddata['group'] = enddata['sample'].map(self.sampleDict)
 
         grouplist = enddata['group'].drop_duplicates().tolist()
@@ -439,11 +439,13 @@ def main():
     length_data = pd.concat(length_data, axis=0).fillna(0)
 
     # mapdata.to_csv(f'{args.output}/ribospike/{args.output}-mappability.csv')
-    biotypedata.to_csv(f'{args.output}/ribospike/{args.output}-ribotype.csv')
+    # file names and columns of release 0.3.0 (before: ribotype.csv with column biotype, ribolengths.csv with
+    # column biotype, column ribospike in ribospike.csv and the ends tables; the value Unmapped is now unmapped)
+    biotypedata.to_csv(f'{args.output}/ribospike/{args.output}-readorigin.csv')
     ribospike_data.to_csv(f'{args.output}/ribospike/{args.output}-ribospike.csv')
     end_data.to_csv(f'{args.output}/ribospike/{args.output}-ribospikeends.csv', index=False)
     end_exact_data.to_csv(f'{args.output}/ribospike/{args.output}-ribospikeends_exact.csv', index=False)
-    length_data.to_csv(f'{args.output}/ribospike/{args.output}-ribolengths.csv', index=False)
+    length_data.to_csv(f'{args.output}/ribospike/{args.output}-spikelengths.csv', index=False)
 
     # pm.plot_ribospike_ends()
     # pm.plot_ribospike_ends_line()

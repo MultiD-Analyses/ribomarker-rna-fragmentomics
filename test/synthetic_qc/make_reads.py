@@ -62,7 +62,7 @@ R2_TAIL = "TGATCGTCGGACT" + "GTAGAACTCTGAACGTGTAGATCTCGGTGGTCGCCGTATCATT" + "A" 
 #             "merge" (paired-end only: pair cannot be merged)
 #   mapping   "unique" | "multi" | "unmapped" | "spike"
 #   tier      index the read aligns to
-#   typecount row in *-typecounts.csv   (None: removed by remove_multimap / remove_antisense)
+#   rna_class row in *-classcounts.csv  (class id; None: removed by remove_multimap / remove_antisense)
 #   gene      row in *-genecounts.csv   (None: not a mature gene)
 # Optional (hard cases):
 #   n           a third number = reads in S3 (missing = 0)
@@ -88,69 +88,69 @@ CATEGORIES = [
     dict(id="C02", what="10-nt insert (below the 15-nt minimum)", n=(53, 47), draw=("random", 10), lost="short"),
     dict(id="C03", what="150-nt BTG3 insert: paired-end mates do not overlap (not merged); single-end R1 maps",
          n=(37, 29), draw=("contig", "human-cdna", CDNA_BTG3, 150, 1, "sense"), lost="merge",
-         mapping="unique", tier="human-cdna", typecount="protein_coding", gene="BTG3"),
+         mapping="unique", tier="human-cdna", rna_class="protein_coding", gene="BTG3"),
     dict(id="C04", what="spike-in, n reads for each of the 20 spikes", n=(7, 0), draw=("spike", 0, 0),
          mapping="spike", tier="ribospike"),
-    dict(id="C05", what="UniVec fragment (UniVec contigs are not in the BED)", n=(29, 31),
+    dict(id="C05", what="UniVec fragment (UniVec contigs are not in the BED; class UniVec since 0.3.0)", n=(29, 31),
          draw=("contig", "univec_bt1", None, 30, 1, "sense"),
-         mapping="unique", tier="univec_bt1", typecount="unannotated", gene=None),
+         mapping="unique", tier="univec_bt1", rna_class="UniVec", gene=None),
     dict(id="C06", what="rRNA fragment", n=(41, 43),
          draw=("contig", "human-rrna_bt1", "Homo_sapiens_18S_1", 30, 1, "sense"),
-         mapping="unique", tier="human-rrna_bt1", typecount="rRNA", gene="Homo_sapiens_18S_1"),
+         mapping="unique", tier="human-rrna_bt1", rna_class="rRNA", gene="Homo_sapiens_18S_1"),
     dict(id="C07", what="tRNA fragment, unique", n=(47, 53),
          draw=("contig", "human-trnas", "Homo_sapiens_tRNA-Ala-CGC-3", 30, 1, "sense"),
-         mapping="unique", tier="human-trnas", typecount="tRNA", gene="Homo_sapiens_tRNA-Ala-CGC-3"),
+         mapping="unique", tier="human-trnas", rna_class="tRNA", gene="Homo_sapiens_tRNA-Ala-CGC-3"),
     dict(id="C08", what="tRNA fragment shared by Leu-CAG-1 and -2 (multimapper, removed)", n=(31, 37),
          draw=("contig", "human-trnas", "Homo_sapiens_tRNA-Leu-CAG-1", 30, 2, "sense"),
-         mapping="multi", removed="multimap", tier="human-trnas", typecount=None, gene=None),
+         mapping="multi", removed="multimap", tier="human-trnas", rna_class=None, gene=None),
     dict(id="C09", what="mature miRNA, full length", n=(59, 61), draw=("whole", "human-mirna", "Hsa-Mir-21_5p"),
-         mapping="unique", tier="human-mirna", typecount="miRNA", gene="Hsa-Mir-21_5p"),
+         mapping="unique", tier="human-mirna", rna_class="miRNA", gene="Hsa-Mir-21_5p"),
     dict(id="C10", what="piRNA, full length", n=(43, 41), draw=("whole", "human-pirna", "piR-hsa-9"),
-         mapping="unique", tier="human-pirna", typecount="piRNA", gene="piR-hsa-9"),
+         mapping="unique", tier="human-pirna", rna_class="piRNA", gene="piR-hsa-9"),
     dict(id="C11", what="lncRNA fragment", n=(61, 67),
          draw=("contig", "human-ncrna", "ENST00000786877|H19", 30, 1, "sense"),
-         mapping="unique", tier="human-ncrna", typecount="lncRNA", gene="H19"),
+         mapping="unique", tier="human-ncrna", rna_class="lncRNA", gene="H19"),
     dict(id="C12", what="mRNA fragment, ETS2", n=(67, 71), draw=("contig", "human-cdna", CDNA_ETS2, 30, 1, "sense"),
-         mapping="unique", tier="human-cdna", typecount="protein_coding", gene="ETS2"),
+         mapping="unique", tier="human-cdna", rna_class="protein_coding", gene="ETS2"),
     dict(id="C13", what="mRNA fragment, BTG3", n=(71, 73), draw=("contig", "human-cdna", CDNA_BTG3, 30, 1, "sense"),
-         mapping="unique", tier="human-cdna", typecount="protein_coding", gene="BTG3"),
+         mapping="unique", tier="human-cdna", rna_class="protein_coding", gene="BTG3"),
     dict(id="C14", what="mRNA fragment, ETS2, antisense (removed)", n=(19, 23),
          draw=("contig", "human-cdna", CDNA_ETS2, 30, 1, "antisense"),
-         mapping="unique", removed="antisense", tier="human-cdna", typecount=None, gene=None),
+         mapping="unique", removed="antisense", tier="human-cdna", rna_class=None, gene=None),
     dict(id="C15", what="ETS2 gene body, not in the cDNA (pre-mRNA)", n=(23, 29), draw=("intron", 30),
-         mapping="unique", tier="human-genome", typecount="pre-mRNA", gene=None),
+         mapping="unique", tier="human-genome", rna_class="pre-mRNA", gene=None),
     dict(id="C16", what="intergenic genome fragment", n=(17, 19), draw=("intergenic", 30),
-         mapping="unique", tier="human-genome", typecount="unannotated", gene=None),
+         mapping="unique", tier="human-genome", rna_class="genome_unannotated", gene=None),
     dict(id="C17", what="random 30-nt sequence, absent from every reference", n=(13, 11), draw=("random", 30),
-         mapping="unmapped", tier=None, typecount="unmapped", gene=None),
+         mapping="unmapped", tier=None, rna_class="unmapped", gene=None),
     dict(id="C18", what="15-nt MRPL39 fragment (exactly the minimum length)", n=(11, 13),
          draw=("contig", "human-cdna", CDNA_MRPL39, 15, 1, "sense"),
-         mapping="unique", tier="human-cdna", typecount="protein_coding", gene="MRPL39"),
+         mapping="unique", tier="human-cdna", rna_class="protein_coding", gene="MRPL39"),
     # ---- hard cases (2026-10-05) ----
     dict(id="C19", what="tRNA fragment exact to Leu-CAG-1, 1 mismatch to Leu-CAG-2: unique by best score (kept), "
                         "two reported alignments (aligner-dependent)",
          n=(23, 19), draw=("near_multi", "human-trnas", "Homo_sapiens_tRNA-Leu-CAG-1", "Homo_sapiens_tRNA-Leu-CAG-2", 30),
-         mapping="unique", alignments=2, tier="human-trnas", typecount="tRNA", gene="Homo_sapiens_tRNA-Leu-CAG-1"),
+         mapping="unique", alignments=2, tier="human-trnas", rna_class="tRNA", gene="Homo_sapiens_tRNA-Leu-CAG-1"),
     dict(id="C20", what="mRNA fragment, MRPL39, 1 mismatch (Bowtie 2 tier)", n=(17, 13),
          draw=("contig", "human-cdna", CDNA_MRPL39, 30, 1, "sense"), mismatches=(15,),
-         mapping="unique", tier="human-cdna", typecount="protein_coding", gene="MRPL39"),
+         mapping="unique", tier="human-cdna", rna_class="protein_coding", gene="MRPL39"),
     dict(id="C21", what="rRNA fragment, 1 mismatch (Bowtie 1 tier)", n=(13, 17),
          draw=("contig", "human-rrna_bt1", "Homo_sapiens_18S_1", 30, 1, "sense"), mismatches=(15,),
-         mapping="unique", tier="human-rrna_bt1", typecount="rRNA", gene="Homo_sapiens_18S_1"),
+         mapping="unique", tier="human-rrna_bt1", rna_class="rRNA", gene="Homo_sapiens_18S_1"),
     dict(id="C22", what="ETS2 gene body, plus strand, inside a minus-strand snoRNA: the higher-rank snoRNA is chosen "
                         "whatever its strand (§6.1), so antisense (removed)",
          n=(19, 17), draw=("in_feature", "SYNTH-SNORD-minus", 30, "plus"), orientation="antisense",
-         mapping="unique", removed="antisense", tier="human-genome", typecount=None, gene=None),
+         mapping="unique", removed="antisense", tier="human-genome", rna_class=None, gene=None),
     dict(id="C23", what="same snoRNA region, minus strand: sense to the snoRNA (kept)", n=(15, 21),
          draw=("in_feature", "SYNTH-SNORD-minus", 30, "minus"), orientation="sense",
-         mapping="unique", tier="human-genome", typecount="snoRNA", gene="SYNTH-SNORD-minus"),
+         mapping="unique", tier="human-genome", rna_class="snoRNA", gene="SYNTH-SNORD-minus"),
     dict(id="C24", what="intergenic read whose last base is the first base of a lncRNA (1-nt overlap, "
                         "removed by the 2-nt clipping, §6.1): unannotated",
          n=(11, 7), draw=("edge", "SYNTH-LNC-edge", 1, 30), orientation="",
-         mapping="unique", tier="human-genome", typecount="unannotated", gene=None),
+         mapping="unique", tier="human-genome", rna_class="genome_unannotated", gene=None),
     dict(id="C25", what="intergenic read overlapping the same lncRNA by 5 nt: assigned to it", n=(7, 11),
          draw=("edge", "SYNTH-LNC-edge", 5, 30), orientation="sense",
-         mapping="unique", tier="human-genome", typecount="lncRNA", gene="SYNTH-LNC-edge"),
+         mapping="unique", tier="human-genome", rna_class="lncRNA", gene="SYNTH-LNC-edge"),
     dict(id="C26", what="spike-in without its last base (offset -1: full-length, not exact), n per spike", n=(2, 0),
          draw=("spike", 0, 1), mapping="spike", tier="ribospike"),
     dict(id="C27", what="spike-in without its first and last base (offset -2: full-length, not exact), n per spike",
@@ -162,11 +162,11 @@ CATEGORIES = [
     dict(id="C30", what="ETS2 fragment, all bases Phred 10: removed by fastp's quality filter in paired-end mode "
                         "(fastp defaults); single-end has no quality filter and maps it",
          n=(13, 11), draw=("contig", "human-cdna", CDNA_ETS2, 30, 1, "sense"), quality="+", lost="fastp",
-         mapping="unique", tier="human-cdna", typecount="protein_coding", gene="ETS2"),
+         mapping="unique", tier="human-cdna", rna_class="protein_coding", gene="ETS2"),
     dict(id="C31", what="60-nt ETS2 fragment, first 6 bases N: removed by fastp's N filter in paired-end mode "
                         "(fastp defaults); single-end maps it (6 N within Bowtie 2's default N ceiling, aligner-dependent)",
          n=(9, 7), draw=("contig", "human-cdna", CDNA_ETS2, 60, 1, "sense"), leading_n=6, lost="fastp",
-         mapping="unique", tier="human-cdna", typecount="protein_coding", gene="ETS2"),
+         mapping="unique", tier="human-cdna", rna_class="protein_coding", gene="ETS2"),
     # ---- exploratory, sample S3 only: outcome reported, not checked (sub-seed mismatches) ----
     dict(id="C32", what="16-nt BTG3 fragment, exact (control)", n=(0, 0, 20), exploratory=True,
          draw=("contig", "human-cdna", CDNA_BTG3, 16, 1, "sense"), mapping="exploratory", gene="BTG3"),
@@ -507,19 +507,19 @@ def expected_numbers(sample_idx, spikes):
                 for n_spike, (name, length, spike_type, _) in units:
                     full_length, offset = spike_class(cat, length)
                     if not full_length:
-                        add(mode, "typecounts", "RiboSpike-Short", n_spike, cat["id"])
+                        add(mode, "classcounts", "RiboSpike-Fragment", n_spike, cat["id"])
                         add(mode, "qc", "spike.fragment_reads", n_spike, cat["id"])
                         continue
-                    add(mode, "typecounts", f"RiboSpike-{spike_type}", n_spike, cat["id"])
+                    add(mode, "classcounts", f"RiboSpike-{spike_type}", n_spike, cat["id"])
                     add(mode, "ribospike", f"RiboSpike-{length}-{spike_type}", n_spike, cat["id"])
-                    add(mode, "ribolengths", f"RiboSpike-{spike_type}:{length + offset}", n_spike, cat["id"])
+                    add(mode, "spikelengths", f"RiboSpike-{spike_type}:{length + offset}", n_spike, cat["id"])
                     add(mode, "qc", f"spike.{length}.reads", n_spike, cat["id"])
                     offsets[(mode, length, offset)] += n_spike
                     if offset == 0:              # designed length, whole spike: an exact read
                         add(mode, "qc", f"spike.{length}.exact_reads", n_spike, cat["id"])
                 continue
-            if cat.get("typecount"):
-                add(mode, "typecounts", cat["typecount"], total, cat["id"])
+            if cat.get("rna_class"):
+                add(mode, "classcounts", cat["rna_class"], total, cat["id"])
             if cat.get("gene"):
                 add(mode, "genecounts", cat["gene"], total, cat["id"])
 
@@ -619,10 +619,10 @@ def main():
                                   "insert_length", "insert_sequence", "source_contig", "source_start",
                                   "fate_paired_end", "fate_single_end", "reference_tier", "alignments"], key_rows)
     write_tsv("categories.tsv", ["id", "what"] + [f"n_{s}" for s in SAMPLES] +
-              ["lost", "mapping", "removed", "typecount", "gene"],
+              ["lost", "mapping", "removed", "rna_class", "gene"],
               [[c["id"], c["what"]] + [n_of(c, i) for i in range(len(SAMPLES))] +
                [c.get("lost", ""), c.get("mapping", ""), c.get("removed", ""),
-                c.get("typecount") or "", c.get("gene") or ""] for c in CATEGORIES])
+                c.get("rna_class") or "", c.get("gene") or ""] for c in CATEGORIES])
     print(f"wrote fastq/ and truth/ (reads_truth.tsv, truth.tsv with {len(truth_rows)} rows, categories.tsv) in {args.out}")
 
 

@@ -1,0 +1,25 @@
+/* Additions to MultiQC's style for the technical QC report (qcReport.py passes this file as custom_css_files).
+   Rows of plot buttons wrap instead of running off the right edge (the read-length plots have one button per
+   RNA class, RealSeq review #12-#14). */
+.dataset-switch-group { flex-wrap: wrap; }
+.dataset-switch-group .btn { margin-bottom: 2px; }
+/* Settings (report.js): a line of their own above the other buttons; rounded, blue, with a label */
+.rm-settings-line { display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: center; margin-bottom: 6px; }
+.rm-setting-label { font-size: 0.8rem; font-weight: 600; color: #52514e; margin-right: 6px; }
+.rm-setting-group .rm-setting { border: 1px solid #2a78d6; color: #1c5cab; background: transparent; }
+.rm-setting-group .rm-setting:first-child { border-top-left-radius: 1rem; border-bottom-left-radius: 1rem; }
+.rm-setting-group .rm-setting:last-child { border-top-right-radius: 1rem; border-bottom-right-radius: 1rem; }
+.rm-setting-group .rm-setting.active { background: #2a78d6; color: #ffffff; }
+.rm-choice-group { flex-wrap: wrap; }
+[data-bs-theme="dark"] .rm-setting-label { color: #c3c2b7; }
+[data-bs-theme="dark"] .rm-setting-group .rm-setting { border-color: #3987e5; color: #86b6ef; }
+[data-bs-theme="dark"] .rm-setting-group .rm-setting.active { background: #3987e5; color: #ffffff; }
+/* Descriptions: a lead sentence, then one term per line (qcReport.terms) */
+.rm-terms { padding-left: 1.2rem; margin-bottom: 0.6rem; }
+.rm-terms li { margin: 1px 0; }
+/* Colour samples by (report.js): a selector above the sample table, with a key of the groups */
+.rm-colour-by { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 8px 0 4px; }
+.rm-colour-select { width: auto; display: inline-block; }
+.rm-colour-key { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 0.85rem; }
+.rm-colour-chip { font-weight: 600; display: inline-flex; align-items: center; cursor: pointer; margin: 0; }
+.rm-colour-chip input[type=color] { width: 1.4rem; height: 1.4rem; padding: 0; border: none; background: none; cursor: pointer; }
