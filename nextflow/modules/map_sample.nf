@@ -12,6 +12,8 @@ process MAP_SAMPLE {
     output:
     tuple val(meta), path("alignments/${meta.id}.merged.bam"), emit: bam
     path "logs/map_${meta.id}.log", emit: log
+    path "alignments/logs/*", emit: align_logs
+    path "logs/map_${meta.id}.txt", emit: map_log
 
     script:
     def py_script = "${projectDir}/../docker/scripts/main.py"
@@ -32,5 +34,11 @@ process MAP_SAMPLE {
         -d ${dbpaths} \\
         -m ${multimap} \\
         --align-mode ${mode} > logs/map_${meta.id}.log 2>&1
+
+    if [ -f "logs/map.log" ]; then
+        cp -f logs/map.log "logs/map_${meta.id}.txt"
+    else
+        touch "logs/map_${meta.id}.txt"
+    fi
     """
 }

@@ -355,7 +355,7 @@ def read_tier_log(path):
         text = f.read()
     if '# reads processed:' in text:                                     # Bowtie 1
         reads_in = log_number(r'^# reads processed: (\d+)', text)
-        aligned = log_number(r'^# reads with at least one reported alignment: (\d+)', text)
+        aligned = log_number(r'^# reads with at least one (?:reported )?alignment: (\d+)', text)
         unaligned = log_number(r'^# reads that failed to align: (\d+)', text)
         multi = None
     elif 'reads; of these:' in text:                                     # Bowtie 2, unpaired reads

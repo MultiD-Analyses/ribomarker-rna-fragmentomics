@@ -19,10 +19,13 @@ params.run_id = 'ribomarker'
 params.multimap = 100
 params.adapter_r2_seq = "TGATCGTCGGACT"
 params.align_mode = 'standard'
+params.skip_qc = false
+params.paired_end = null
 
 include { TRIM_READS }     from './modules/trim_adapters'
 include { MAP_SAMPLE }     from './modules/map_sample'
 include { QUANTIFICATION } from './modules/quantification'
+include { QC_REPORT }      from './modules/qc_report'
 
 def helpMessage() {
     log.info"""
@@ -40,6 +43,8 @@ def helpMessage() {
       --run_id [str]           Run identifier folder (default: ribomarker)
       --multimap [int]         Maximum alignments reported per read (default: 100)
       --align_mode [str]       Alignment mode: standard (single-pass) or iterative (fallback for degraded cfRNA)
+      --paired_end [bool]      Override library layout (true for PE, false for SE; default: inferred)
+      --skip_qc [bool]         Skip QC metrics collection and MultiQC report generation (default: false)
 
     HPC & Container Options:
       -profile [str]           Execution profiles (comma-separated):
@@ -108,4 +113,26 @@ workflow {
     // 4. Feature parsing, quantification, and BedGraph coverage generation
     ch_all_bams = MAP_SAMPLE.out.bam.map { meta, bam -> bam }.collect()
     QUANTIFICATION(ch_all_bams, input_file, bedfile, TRIM_READS.out.trimstats, dbpaths_file, assets_dir.toString(), species)
+
+    // 5. Technical QC collector and MultiQC report generation
+    if (!params.skip_qc) {
+        def first_line = input_file.readLines()[0].trim()
+        def is_pe = first_line.contains('fastq2') || first_line.contains('fastq_file2') || (first_line.split(',').size() >= 3 && !first_line.contains('sample,fastq_file'))
+        def paired_end = params.paired_end != null ? params.paired_end : is_pe
+
+        QC_REPORT(
+            QUANTIFICATION.out.results_dir,
+            QUANTIFICATION.out.tables_dir,
+            input_file,
+            TRIM_READS.out.trimmed_sheet,
+            TRIM_READS.out.trim_logs_dir,
+            MAP_SAMPLE.out.align_logs.collect(),
+            MAP_SAMPLE.out.map_log.collect(),
+            QUANTIFICATION.out.metrics_dir,
+            QUANTIFICATION.out.ribospike_dir,
+            assets_dir.toString(),
+            species,
+            paired_end
+        )
+    }
 }

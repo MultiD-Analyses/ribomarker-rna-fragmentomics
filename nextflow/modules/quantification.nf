@@ -26,6 +26,10 @@ process QUANTIFICATION {
     path "tables/*", optional: true, emit: tables
     path "bedgraph/*.bedgraph", emit: bedgraphs
     path "alignments/*.bam", emit: parsed_bams
+    path "results", emit: results_dir
+    path "tables", emit: tables_dir
+    path "metrics", optional: true, emit: metrics_dir
+    path "ribospike", optional: true, emit: ribospike_dir
 
     script:
     def py_script = "${projectDir}/../docker/scripts/main.py"
@@ -99,15 +103,36 @@ shutil.copyfile('${dbpaths_file}', 'tables/tiers.csv')
         --threads ${task.cpus} \\
         --bampath alignments || true
 
+    mkdir -p ribospike/results metrics
+    if [ -d "results/metrics" ]; then
+        cp -rf results/metrics/* metrics/ 2>/dev/null || true
+    fi
+
     for prefix in results ${run_id}; do
         if [ -f "results/ribospike/\${prefix}-ribospike.csv" ]; then
             cp -f "results/ribospike/\${prefix}-ribospike.csv" "results/${run_id}-ribospike.csv"
+            cp -f "results/ribospike/\${prefix}-ribospike.csv" "ribospike/results/${run_id}-ribospike.csv"
+            cp -f "results/ribospike/\${prefix}-ribospike.csv" "ribospike/${run_id}-ribospike.csv"
         fi
         if [ -f "results/ribospike/\${prefix}-spikelengths.csv" ]; then
             cp -f "results/ribospike/\${prefix}-spikelengths.csv" "results/${run_id}-spikelengths.csv"
+            cp -f "results/ribospike/\${prefix}-spikelengths.csv" "ribospike/results/${run_id}-spikelengths.csv"
+            cp -f "results/ribospike/\${prefix}-spikelengths.csv" "ribospike/${run_id}-spikelengths.csv"
         fi
         if [ -f "results/ribospike/\${prefix}-readorigin.csv" ]; then
             cp -f "results/ribospike/\${prefix}-readorigin.csv" "results/${run_id}-readorigin.csv"
+            cp -f "results/ribospike/\${prefix}-readorigin.csv" "ribospike/results/${run_id}-readorigin.csv"
+            cp -f "results/ribospike/\${prefix}-readorigin.csv" "ribospike/${run_id}-readorigin.csv"
+        fi
+        if [ -f "results/ribospike/\${prefix}-ribospikeends.csv" ]; then
+            cp -f "results/ribospike/\${prefix}-ribospikeends.csv" "results/${run_id}-ribospikeends.csv" 2>/dev/null || true
+            cp -f "results/ribospike/\${prefix}-ribospikeends.csv" "ribospike/results/${run_id}-ribospikeends.csv" 2>/dev/null || true
+            cp -f "results/ribospike/\${prefix}-ribospikeends.csv" "ribospike/${run_id}-ribospikeends.csv" 2>/dev/null || true
+        fi
+        if [ -f "results/ribospike/\${prefix}-ribospikeends_exact.csv" ]; then
+            cp -f "results/ribospike/\${prefix}-ribospikeends_exact.csv" "results/${run_id}-ribospikeends_exact.csv" 2>/dev/null || true
+            cp -f "results/ribospike/\${prefix}-ribospikeends_exact.csv" "ribospike/results/${run_id}-ribospikeends_exact.csv" 2>/dev/null || true
+            cp -f "results/ribospike/\${prefix}-ribospikeends_exact.csv" "ribospike/${run_id}-ribospikeends_exact.csv" 2>/dev/null || true
         fi
     done
 

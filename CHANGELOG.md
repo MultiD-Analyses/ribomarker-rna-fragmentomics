@@ -10,6 +10,7 @@ All notable changes are listed here. Versions follow `MAJOR.MINOR.PATCH`; while 
 - Added `--align_mode` option (`standard` vs. `iterative`): `iterative` mode implements a two-pass hierarchical exact-first fallback that prevents false chance collisions on massive reference tiers (cDNA, genome) for reads <20 nt while capturing authentic donor variation and RNA modifications on compact small-RNA tiers.
 - 100% count matrix equivalence against synthetic ground truth (`truth.tsv`) in standard mode.
 - Added HPC cluster and container execution profiles (`slurm`, `pbs`, `pbspro`, `sge`, `lsf`, `docker`, `singularity`, `apptainer`) with dynamic resource scaling (`check_max`), scheduler queue/option passthrough (`--cluster_queue`, `--cluster_options`), and container conda `PATH` integration.
+- Added automated technical QC collector and MultiQC report generation (`QC_REPORT` module): produces standalone interactive HTML report (`qc/report_technical.html`), QC metrics (`qc/qc_metrics.json`), long-format metrics (`qc/metrics_long.tsv`), and consistency checks (`qc/consistency_checks.tsv`) with `--skip_qc` option.
 - Drop-in CLI runner script: `internal/run_fragmentomics_nextflow.sh`.
 
 ## 0.3.0 – 2026-10-28
