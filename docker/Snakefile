@@ -421,8 +421,21 @@ rule collapse_reads:
         collapse_samples = f'{output_prefix}/samples.collapse.csv',
         collapse_reads = collapse_output if collapse == True else sample_fastqfiles_subsampled,
     threads: threads
+    params:
+        subsample = f"-x {subsample_amount}" if subsample_amount > 0 else "",
+        subsampleonly = "--subsampleonly" if subsample_amount > 0 and not collapse else "",
+        fastqdir = f"--fastqdir {input_dir}" if not trim_fastq else ""
     shell:
-        construct_command_collapse(input, output_prefix, scriptdir, samples)
+        """
+        {ribomarker_exec} \
+            --script collapseReads -- \
+            --samples {input.samples} \
+            --output {output_prefix} \
+            --threads {threads} \
+            {params.subsample} \
+            {params.subsampleonly} \
+            {params.fastqdir}
+        """
 
 ###############################################################################
 # Rule: Map reads to reference databases
