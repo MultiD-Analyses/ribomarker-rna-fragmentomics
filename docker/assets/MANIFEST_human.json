@@ -78,8 +78,8 @@
   "outputs": {
     "dbpaths": {
       "file": "human.dbpaths.csv",
-      "bytes": 308,
-      "sha256": "a61fc355ef720b5753fe5d33ba3d8aa680a295804bf6c7a99ba0341e46dc690d"
+      "bytes": 405,
+      "sha256": "6f96661132e96a37e5dd44184bd3795ff0ae571f55e92d9a2bcc137e5c6c4335"
     },
     "bed": {
       "file": "human.bed",
@@ -385,38 +385,149 @@
       },
       {
         "map_cmd": "bowtie2",
-        "path": "gtf/human-ncrna",
+        "path": "gtf/human-ncrna_mt",
         "retain": "T",
         "files": [
           {
-            "file": "gtf/human-ncrna.1.bt2",
-            "bytes": 17783203,
-            "sha256": "b4e98797eda419cd6f97e6edac2823aa94f2acdf651e11d90588e5ccfcce1845"
+            "file": "gtf/human-ncrna_mt.1.bt2",
+            "bytes": 4196725,
+            "sha256": "a9c460c9193eabb26b452b1c62f340a89d90149c4598c17fd2ef4ac75a3ed76f"
           },
           {
-            "file": "gtf/human-ncrna.2.bt2",
-            "bytes": 8832088,
-            "sha256": "f6e2641b02bc341aa8bc6957c2b46777357fae0b9110ac8ab8b1b33914d5c2fb"
+            "file": "gtf/human-ncrna_mt.2.bt2",
+            "bytes": 1012,
+            "sha256": "a2871fb617ca0a43ff8c0c4c4bed29d1d655e318075761f0cab05886ddda4970"
           },
           {
-            "file": "gtf/human-ncrna.3.bt2",
-            "bytes": 703187,
-            "sha256": "e047c5ec7ee9533567c363a84056bbeca1926839698e6ec0ee5a8731eadc208b"
+            "file": "gtf/human-ncrna_mt.3.bt2",
+            "bytes": 449,
+            "sha256": "40d3ddfec729cf3eb0e97ac02192ae233d889ea76c85596aea6a7670551f2406"
           },
           {
-            "file": "gtf/human-ncrna.4.bt2",
-            "bytes": 8832084,
-            "sha256": "dc56941dd652389d7400937ac0ab8d9d152fbbaece26b8dc98bcab3b69435e19"
+            "file": "gtf/human-ncrna_mt.4.bt2",
+            "bytes": 1005,
+            "sha256": "ce14ed474434ee9939b2224193901929997ecaa97e9b49332ecbe0e05f187dcb"
           },
           {
-            "file": "gtf/human-ncrna.rev.1.bt2",
-            "bytes": 17783203,
-            "sha256": "0739282f775e5d977f8192bc909d6458dcfffd5fe7ed863e1ee5ca634b53b5da"
+            "file": "gtf/human-ncrna_mt.rev.1.bt2",
+            "bytes": 4196725,
+            "sha256": "3f5f543516cdfc3b1b61f4d37183e1b6f302398c92f8f676422cab2b047cebfe"
           },
           {
-            "file": "gtf/human-ncrna.rev.2.bt2",
-            "bytes": 8832088,
-            "sha256": "b947bfa4c00fa8b692f474143ecb7373f33ea1015f12fbc2a9b5d9c4a6a74cdb"
+            "file": "gtf/human-ncrna_mt.rev.2.bt2",
+            "bytes": 1012,
+            "sha256": "029f007c8bc868cf8923ef472712a9d10938dbe4089a44b381d8825737512938"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "gtf/human-ncrna_snsno",
+        "retain": "T",
+        "files": [
+          {
+            "file": "gtf/human-ncrna_snsno.1.bt2",
+            "bytes": 4412125,
+            "sha256": "0daef2c83377f72c1d86e52d16382955351561e17fd72c0fed10d7119b94e2fd"
+          },
+          {
+            "file": "gtf/human-ncrna_snsno.2.bt2",
+            "bytes": 76256,
+            "sha256": "a9403134b1624aa5de4acbfaac77dfe7ba264858540966ae3fb0da0c238c9b40"
+          },
+          {
+            "file": "gtf/human-ncrna_snsno.3.bt2",
+            "bytes": 48968,
+            "sha256": "496c38de8e6d18b2c8073da8ed1dad2badf38c4dedbf01b63d5a957bac535795"
+          },
+          {
+            "file": "gtf/human-ncrna_snsno.4.bt2",
+            "bytes": 76252,
+            "sha256": "1ca4da795e2034f52eb4e91dfbd4d5afd0f7cc5632ba61ade4dd1bf7dbee8594"
+          },
+          {
+            "file": "gtf/human-ncrna_snsno.rev.1.bt2",
+            "bytes": 4412125,
+            "sha256": "9d95e1091260d3ff8025c26ad2d158277126b9b61e2efefcf0ace8332f15f18a"
+          },
+          {
+            "file": "gtf/human-ncrna_snsno.rev.2.bt2",
+            "bytes": 76256,
+            "sha256": "016af31e0dd3eaf70d7aafd903257be66032d7c1b9c8b815b96082c06439a04c"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "gtf/human-ncrna_other",
+        "retain": "T",
+        "files": [
+          {
+            "file": "gtf/human-ncrna_other.1.bt2",
+            "bytes": 4362194,
+            "sha256": "d1bd2b1227b4fd1325f1d678fbf85981d965e595445b9b617a5ef2c9bba0e45f"
+          },
+          {
+            "file": "gtf/human-ncrna_other.2.bt2",
+            "bytes": 83276,
+            "sha256": "2c121231a046635d326ca47fe6fbd4e722937345bd2b4fe17944d1a1f46bf27b"
+          },
+          {
+            "file": "gtf/human-ncrna_other.3.bt2",
+            "bytes": 23840,
+            "sha256": "a19e28d718be50b7d1364e6411641c963e24cee8c80de49d436623781d248924"
+          },
+          {
+            "file": "gtf/human-ncrna_other.4.bt2",
+            "bytes": 83270,
+            "sha256": "c197d1c609a6e0419621ad73d5661f9b77e0439946316400b32fd1065273153a"
+          },
+          {
+            "file": "gtf/human-ncrna_other.rev.1.bt2",
+            "bytes": 4362194,
+            "sha256": "39f12dba7dc9a5c9bd19eeca1425a62c9aa936bebdf8dc21ad245f9b18655191"
+          },
+          {
+            "file": "gtf/human-ncrna_other.rev.2.bt2",
+            "bytes": 83276,
+            "sha256": "5da62d93e3595dd78519d7b88b4b8362e71e05a409129fb71b5b67e7ba45357c"
+          }
+        ]
+      },
+      {
+        "map_cmd": "bowtie2",
+        "path": "gtf/human-ncrna_lnc",
+        "retain": "T",
+        "files": [
+          {
+            "file": "gtf/human-ncrna_lnc.1.bt2",
+            "bytes": 17395570,
+            "sha256": "0be1ab6463fdc76ad698f156ff6114ca790f238315dadfbc4e8efaa64a089bf3"
+          },
+          {
+            "file": "gtf/human-ncrna_lnc.2.bt2",
+            "bytes": 8671564,
+            "sha256": "16ad460188b138cfaa33787a4ef31a382447d2dfd2f812b2172e20a7a1bb689d"
+          },
+          {
+            "file": "gtf/human-ncrna_lnc.3.bt2",
+            "bytes": 629954,
+            "sha256": "86056dc1bbc8af541cd03e54a0336df030c5a20132954c368d52ac49f65bf79e"
+          },
+          {
+            "file": "gtf/human-ncrna_lnc.4.bt2",
+            "bytes": 8671558,
+            "sha256": "03961178a1e26187d810cc658988674c475a45d7f5c9158f5b19fe1660fff034"
+          },
+          {
+            "file": "gtf/human-ncrna_lnc.rev.1.bt2",
+            "bytes": 17395570,
+            "sha256": "225e2897eb2906f3f848be019c65a8d230fda605e56bdd3df453013167108d23"
+          },
+          {
+            "file": "gtf/human-ncrna_lnc.rev.2.bt2",
+            "bytes": 8671564,
+            "sha256": "402b89d2d7d1b6ba21d291f1e1d642794b6245b51cc35c225e1d3b61e68d4b00"
           }
         ]
       },
@@ -568,8 +679,60 @@
     ]
   },
   "outputs_updated": {
-    "utc": "2026-10-08T14:15:01Z",
+    "utc": "2026-11-03T11:44:40Z",
     "script": "update_manifest.py",
-    "script_sha256": "ce1b4824ec69135b89d86b6b9c79eedf807d7b91609fb5ba444a8b27bb416cb8"
+    "script_sha256": "b2507fa9a1818f496e3d9ecd16bd7fdb8e435a05d035f9caa0cf766781805794"
+  },
+  "ncrna_split": {
+    "utc": "2026-11-03T11:44:40Z",
+    "script": "split_ncrna.py",
+    "script_sha256": "4d426a3b234aab35b0db4a8c1c8412c2be7356b31471af43f8eb892c750beaea",
+    "bowtie2-build": "bowtie2-build-s version 2.5.5",
+    "input_fasta": {
+      "file": "gtf/human.ncRNA.fa",
+      "sha256": "dfcd632595d81d528b3a7e93400886782210cbb2dc9f5cb6575e989bc42bbfb3"
+    },
+    "sub_references": [
+      {
+        "name": "ncrna_mt",
+        "index": "gtf/human-ncrna_mt",
+        "biotypes": {
+          "Mt_tRNA": 22,
+          "Mt_rRNA": 2
+        },
+        "fasta": "gtf/human.ncrna_mt.fa",
+        "fasta_sha256": "f9b934c037d9d0eb89fb883bba68aeb9e0f1297023e1ae7ce9a90afd294a5bde"
+      },
+      {
+        "name": "ncrna_snsno",
+        "index": "gtf/human-ncrna_snsno",
+        "biotypes": {
+          "snRNA": 1837,
+          "snoRNA": 832,
+          "scaRNA": 51
+        },
+        "fasta": "gtf/human.ncrna_snsno.fa",
+        "fasta_sha256": "65baa7063f90987d805a577cc8a60a7b6744424b704b43d871bb66ac1b35c74a"
+      },
+      {
+        "name": "ncrna_other",
+        "index": "gtf/human-ncrna_other",
+        "biotypes": {
+          "misc_RNA": 1282,
+          "rRNA": 42
+        },
+        "fasta": "gtf/human.ncrna_other.fa",
+        "fasta_sha256": "8df0e2068a37723362dad4f9d6c30e99520c76f57ac185cd5d6e7dcc9afa4a78"
+      },
+      {
+        "name": "ncrna_lnc",
+        "index": "gtf/human-ncrna_lnc",
+        "biotypes": {
+          "lncRNA": 34997
+        },
+        "fasta": "gtf/human.ncrna_lnc.fa",
+        "fasta_sha256": "8923cbf9e718f43b7571cf766e6eedfbf10a1422b0f05ff60eec0baf7db527d6"
+      }
+    ]
   }
 }

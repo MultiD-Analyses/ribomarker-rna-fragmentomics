@@ -4,7 +4,6 @@ stand-in for docker that prints its arguments. Run from the repository root: pyt
 import os
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -88,6 +87,20 @@ def test_tier_list_and_class_table_are_mounted(tmp_path, docker):
         assert any(tail[k:k + 2] == pair for k in range(len(tail))), pair
     code, _, err = ribomarker(docker, 'in/samples.csv', 'out', '--rna-classes', 'none.tsv', cwd=tmp_path)
     assert code == 2 and 'file not found' in err
+
+
+def test_passes_file_is_mounted(tmp_path, docker):
+    """0.4.0: --passes is a file, mounted read-only like --tiers."""
+    sheet(tmp_path / 'in')
+    (tmp_path / 'my tables').mkdir()
+    (tmp_path / 'my tables' / 'passes.tsv').write_text('x\n')
+    code, lines, _ = ribomarker(docker, 'in/samples.csv', 'out', '--passes', 'my tables/passes.tsv', cwd=tmp_path)
+    assert code == 0
+    assert f'{tmp_path}/my tables/passes.tsv:/data/passes/passes.tsv:ro' in mounts(lines)
+    tail = lines[lines.index('run', 1):]
+    assert any(tail[k:k + 2] == ['--passes', '/data/passes/passes.tsv'] for k in range(len(tail)))
+    ps1 = (REPO / 'ribomarker_windows.ps1').read_text()
+    assert "'--tiers', '--passes', '--rna-classes'" in ps1        # the PowerShell starter mounts it the same way
 
 
 def test_demo_and_help(tmp_path, docker):

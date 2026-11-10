@@ -10,6 +10,8 @@ authors:
   - given-names: Martin
     family-names: Smelik
     affiliation: MultiD Analyses AB
+  - given-names: Ruslan
+    family-names: Klassen
 license: MIT
 doi: 10.5281/zenodo.23475622
 repository-code: "https://github.com/MultiD-Analyses/ribomarker-rna-fragmentomics"

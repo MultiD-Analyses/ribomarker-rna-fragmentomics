@@ -21,7 +21,8 @@ sys.path.insert(0, str(REPO / 'docker' / 'scripts'))      # lets the tests impor
 USER_SHEET = ('\ufeffgroup;sample;fastq_file;fastq_file2;age\n'
               'control;S1;S1_R1_001.fastq.gz;S1_R2_001.fastq.gz;41\n'
               'case;S2;S2_R1_001.fastq.gz;S2_R2_001.fastq.gz;\n'
-              'control;S3;S3_R1_001.fastq.gz;S3_R2_001.fastq.gz;38\n')
+              'control;S3;S3_R1_001.fastq.gz;S3_R2_001.fastq.gz;38\n'
+              'case;S4;S4_R1_001.fastq.gz;S4_R2_001.fastq.gz;\n')                # S4: level A bundle of 0.4.0
 
 
 def prepare_run(tmp_path, mode):

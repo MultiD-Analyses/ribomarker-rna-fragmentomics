@@ -8,6 +8,7 @@ univec_source: bowtie-inspect docker/assets/univec/univec_bt1 (first 3 records)
 selection_and_seed: set in make_mini_assets.py (window, records) and make_reads.py (SEED, categories)
 renamed_0.3.0: truth/truth.tsv and truth/categories.tsv regenerated with make_reads.py of release 0.3.0 (S2: class ids, table names classcounts/spikelengths); FASTQ files and reads_truth.tsv unchanged (byte-identical)
 renamed_0.3.0_S3g: truth.tsv and categories.tsv regenerated again (C05: class UniVec); FASTQ files and reads_truth.tsv unchanged (byte-identical)
+renamed_0.4.0_S2: the ncRNA reference as four sub-references (buildDB/split_ncrna.py): references/gtf/human-ncrna.fa replaced by human-ncrna_{mt,snsno,other,lnc}.fa with the added records MT-TL1 (ENST00000386347), SNORD22 (ENST00000384756), RN7SL1 (ENST00000618786) and SNHG1 (ENST00000668048), the host lncRNA of SNORD22, which lies in it completely (126 nt); human.bed and tiers.csv to match. New sample S4 (categories C36-C39, seed 20261103). S1-S3: FASTQ files byte-identical; reads_truth.tsv and truth.tsv identical apart from the tier key human-ncrna -> human-ncrna_lnc; their inserts checked against the added records (none alignable with the pipeline's Bowtie 2 penalties). Made with make_mini_assets.py and make_reads.py of release 0.4.0 (S2), Python 3.10, from the cached chromosome 21 and UniVec of work/, 2026-11-03, at commit ddd89e5396d48e183faae5b970e591639b45cd16 (the two scripts uncommitted at that point)
 
 files (sha256):
 b158590c7d2024abba7132fe355f8f70719ddd19fc47547efd33228a405fef90  fastq/S1_R1_001.fastq.gz
@@ -16,21 +17,26 @@ ea8a5ae0fb9bdc0b2ee9b06966815cebdef1e0b3769c51c8c92b269ad68607c8  fastq/S2_R1_00
 cd58b1b5690ad03cbfd921c9a947d78cbda6c4552285e0f4bc3cd1e31ba0e62f  fastq/S2_R2_001.fastq.gz
 ae3511967995ea63f5517f9d7842045285c0c5771f3a47e2032f23fe877f0e36  fastq/S3_R1_001.fastq.gz
 3de9cbb3ade8db568433ff993c8667e545568726992638088a198bb4c84877c4  fastq/S3_R2_001.fastq.gz
-a7b410f0610c61e024f8287c06c09acea7f170e002002164f922a8055d4721f3  fastq/samples_pe.csv
-841842ab67b3c999152a74dbfd2b7d4f6c0e1cea9aae3582907d7112ea19413a  fastq/samples_se.csv
+e113f8df0b9bfc210e02e4f68b00f6b55af07c800fd73bdbcdc128fc82c413a9  fastq/S4_R1_001.fastq.gz
+0e8f36cc9eaf566ae8539787ed1442f8742a6c4d53fca99e0ea5826926d659d4  fastq/S4_R2_001.fastq.gz
+d20b3474f7fea3cf57e89173674ecbf71f2839961add4584a7a40b7c957e0f0c  fastq/samples_pe.csv
+d46dfd0046bb6642e713dee1b5c27fdc031f54c5cb418a115ad4c5be7d045580  fastq/samples_se.csv
 d83441822a8c15c3825d7825888e13b55708d2f51c9266883caec2f5f6e3a2f9  references/genome/human-genome.fa
 657ddeabaa6bfaaac27de20be1fb3f6cea27a9b0aebe42b0ae3ebdb61385c384  references/gtf/human-cdna.fa
-f3ff59369a04c2780df8fe914a3932933e83211c6d8ad254a636d9514cbda87a  references/gtf/human-ncrna.fa
-b564d2b618e62be626f18546e168fece37eb1b66a5d1dc33ac33af3b5b0134db  references/human.bed
+b0f5e4c8d083ccda853603681c7036cc8eb6db3b647d2899cb449aa30ba11b65  references/gtf/human-ncrna_lnc.fa
+40f3bba1aa08e2c6dbf888df376d3f21c66843e24c52c7dd7883924e274a5052  references/gtf/human-ncrna_mt.fa
+068cabbc862b9790f6496b0e190f3b547930d1f251fc27d8b00e122426d904f5  references/gtf/human-ncrna_other.fa
+cd2216a9c37cda7a7771c126cc0c8723b9a96a93df42e3690e4b28751c56e4cc  references/gtf/human-ncrna_snsno.fa
+eb2cff92cf1922793ffe986ea025b3908dc5da7109c3dd50b861ad792bbb6f2e  references/human.bed
 6b40f6896cb8239538d18b6c6c6a3c4cce212a8cb32facd1cdc197d41539a985  references/mirna/human-mirna.fa
 1a14de3f44ed9934554e82d6cc7bc8ab0d8e65f81c3e6a56dad037371dc6eee6  references/mirna/human-pre.fa
 2f2a86b9598ed4a1ee6a3262753f77b441e0ecfc031b5f214c9f327314616fc1  references/mirna/human-star.fa
 66accd3d4ecb0265c4c990841b0106081a85b38eb1260d5767bff26a1f427227  references/pirna/human-pirna.fa
 25143e9dde9febacdfb1a8ceef9d1221300534ec633cdfa50790be30631337c3  references/ribospike/ribospike.fa
 bced6e3ae89710b5ccfa15ca0f7f80aeae7f7f523440fb96e4261b2ca9d43493  references/rrna/human-rrna_bt1.fa
-8163de8b677fbfc416afae352215f37d779de94dbeea8831e9ca8bccb79521a6  references/tiers.csv
+4a46703e39bbdf77fee09fb5ff77e16da2e8f5cc9e449a39275d4c11e12d23b2  references/tiers.csv
 83f6f4ab3d2f602aa922ca4206a40757fea8ea6798f13e746441a3ffe658b86a  references/trna/human-trnas.fa
 f5ac12412c4db340cec49f024b6169d87197dd3f7f4a28ea88ee67ea5be6220e  references/univec/univec_bt1.fa
-b6415f462e0c346a2d52bd39ee303ce1c11b49b8cd9bad11d9ecaf98789ea2dc  truth/categories.tsv
-c69e4c9101c8c64be35923cc218e7a932832c26f1dca9c930f5a94c60ff92ffb  truth/reads_truth.tsv
-8d96f1bffddd4a8dfc68553074487d17ae720be3730bd4c56db3d38b48a204b5  truth/truth.tsv
+d45517d86521739acc807e068bbbad824aa9d96b3d029991301da7c0c1902c2b  truth/categories.tsv
+a487562b623464cae4b01812461da728ca92f0b541dfcab5bf3f1533e77d5ff8  truth/reads_truth.tsv
+07ea49d021073810cbbca8cd3fafc1779e160979bc4406718fb86942172ed489  truth/truth.tsv

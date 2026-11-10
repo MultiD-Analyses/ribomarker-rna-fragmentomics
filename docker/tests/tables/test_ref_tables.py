@@ -1,5 +1,5 @@
-"""The RNA class tables (release 0.3.0): they reproduce the constants they replace (S1), their class ids are
-those of the translation map (S2), and broken tables are refused."""
+"""The RNA class tables (release 0.3.0): they reproduce the constants they replace, their class ids are
+those of the translation map, and broken tables are refused."""
 import os
 import sys
 from pathlib import Path
@@ -9,6 +9,7 @@ import pytest
 DOCKER = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(DOCKER / 'scripts'))
 import refTables  # noqa: E402
+import dbPaths  # noqa: E402
 
 # The constants of the pipeline before 0.3.0, copied here as the reference (parseMappings.py genetype_hierarchy,
 # collapseGenes.py DROP_BIOTYPES / EXCLUDE_BIOTYPES / FRAGMENT_BIOTYPES, qcCollect.py and qcReport.py
@@ -37,7 +38,7 @@ def old_rank(label):
     return OLD_HIERARCHY.get(label, 10)
 
 
-# S4 (report, RealSeq review #8, #9): mRNA is shown as protein_coding, and the genome group is split in two
+# 0.3.0 (report, RealSeq review #8, #9): mRNA is shown as protein_coding, and the genome group is split in two
 S4_GROUPS = {'mRNA': 'protein_coding', 'genome, precursors, introns': 'genome: pre-mRNA, pre-tRNA'}
 
 
@@ -64,7 +65,7 @@ def test_ranks_reproduce_the_old_hierarchy(table):
 
 
 def test_gene_table_reproduces_collapse_genes(table):
-    """collapseGenes sees class ids since S2: the rule of a label's class is the old rule of the label."""
+    """collapseGenes sees class ids since 0.3.0: the rule of a label's class is the old rule of the label."""
     for label in BED_LABELS + ['unannotated', 'unmapped', 'RiboSpike-T1', 'RiboSpike-Short', 'miND']:
         old = 'drop' if label in OLD_DROP else (
             'exclude' if label in ('unannotated', 'unmapped') or label.startswith('RiboSpike') else 'yes')
@@ -84,8 +85,8 @@ def test_qc_sets_reproduce_the_old_constants(table):
 
 
 def translation_map():
-    """{old: (new, display)} of the class rows of the hand-written translation map of release 0.3.0: step S2, then
-    the later steps (S3a: the star arm is class miRNA) applied on top. The map is kept in the internal repository
+    """{old: (new, display)} of the class rows of the hand-written translation map of release 0.3.0, then
+    the later changes (the star arm is class miRNA) applied on top. The map is kept in the internal repository
     only, so the test is skipped in the public one."""
     path = DOCKER.parent / 'internal' / 'levels' / 'translation_map_0.3.0.tsv'
     if not path.exists():
@@ -172,6 +173,15 @@ def test_replacement_gets_the_system_rows(tmp_path):
     assert table.row('rRNA')['description'] == 'mine'
     assert table.row('unmapped') is not None and table.row('RiboSpike-T1') is not None
     assert table.row('lncRNA') is None                      # a replacement replaces the whole table
+    assert table.row('antisense') is None                   # release 0.4.0: no longer a system row
+
+
+def test_an_antisense_row_of_an_old_table_gives_a_warning(table, tmp_path):
+    """Release 0.4.0: antisense reads keep their class; a table copied from 0.3.0 still has the row."""
+    assert table.row('antisense') is None and table.obsolete_rows() == []
+    old = write(tmp_path, HEADER + 'antisense\t*\tantisense\tantisense\tlncRNA and other ncRNA\t91\t10\tno\tyes\tno\td\n')
+    warnings = refTables.ClassTable(old, 'human').obsolete_rows()
+    assert len(warnings) == 1 and 'has a row for antisense, which is not used' in warnings[0]
 
 
 def test_rows_of_one_label_must_agree(tmp_path):
@@ -186,15 +196,24 @@ def test_rows_of_one_label_must_agree(tmp_path):
     with pytest.raises(refTables.TableError, match='differ in rank_in_tier'):
         refTables.ClassTable(write(tmp_path, HEADER + other_rank))
     table = refTables.ClassTable(str(DOCKER / 'tables' / 'human.rna_classes.tsv'), 'human')
-    assert [r['tier'] for r in table.rows if r['source_label'] == 'rRNA'] == ['rrna_bt1', 'ncrna']   # these agree
+    assert [r['tier'] for r in table.rows if r['source_label'] == 'rRNA'] == ['rrna_bt1', 'ncrna_other']   # these agree
 
 
 def test_tiers_missing_from_the_tier_list_are_named():
     table = refTables.ClassTable(str(DOCKER / 'tables' / 'human.rna_classes.tsv'), 'human')
-    built_in = ['univec_bt1', 'ribospike', 'rrna_bt1', 'trnas', 'mirna', 'star', 'pre', 'pirna', 'ncrna', 'cdna',
-                'genome']
+    built_in = ['univec_bt1', 'ribospike', 'rrna_bt1', 'trnas', 'mirna', 'star', 'pre', 'pirna', 'ncrna_mt', 'ncrna_snsno',
+                'ncrna_other', 'ncrna_lnc', 'cdna', 'genome']
     assert table.unknown_tiers(built_in) == []
     assert table.unknown_tiers([t for t in built_in if t != 'star']) == ['star']
+
+
+def test_a_class_table_with_the_old_ncrna_tier_gets_the_new_names(tmp_path):
+    """0.4.0: the ncRNA reference is four sub-references; a table that still names ncrna gets a warning naming them."""
+    table = refTables.ClassTable(write(tmp_path, HEADER + 'snoRNA\tncrna\tsnoRNA\ts\tg\t51\t5\tyes\tyes\tno\td\n'), 'human')
+    unknown = table.unknown_tiers(['ncrna_mt', 'ncrna_snsno', 'ncrna_other', 'ncrna_lnc'])   # the system rows add others
+    assert 'ncrna' in unknown
+    assert table.split_tier_note(unknown) == ' (ncrna is ncrna_mt, ncrna_snsno, ncrna_other, ncrna_lnc since release 0.4.0)'
+    assert table.split_tier_note(['other']) == ''
 
 
 def test_find_table_precedence(tmp_path):
@@ -210,10 +229,10 @@ def test_find_table_precedence(tmp_path):
 
 
 def test_tier_id():
-    assert refTables.tier_id('/x/genome/human-genome', 'human') == 'genome'
-    assert refTables.tier_id('gtf/human-ncrna', 'human') == 'ncrna'
-    assert refTables.tier_id('univec/univec_bt1', 'human') == 'univec_bt1'
-    assert refTables.tier_id('rrna/mouse-rrna_bt1', 'mouse') == 'rrna_bt1'
+    assert dbPaths.tier_id('/x/genome/human-genome', 'human') == 'genome'
+    assert dbPaths.tier_id('gtf/human-ncrna', 'human') == 'ncrna'
+    assert dbPaths.tier_id('univec/univec_bt1', 'human') == 'univec_bt1'
+    assert dbPaths.tier_id('rrna/mouse-rrna_bt1', 'mouse') == 'rrna_bt1'
 
 
 def test_gene_symbols_are_applied_only_for_their_bed(tmp_path):

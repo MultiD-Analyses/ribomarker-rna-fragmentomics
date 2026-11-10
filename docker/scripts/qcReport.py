@@ -26,6 +26,7 @@ from pathlib import Path
 
 import yaml
 
+import mapSchedule
 import refTables
 from qcCollect import RBC_MIRNAS as RBC_MIRNA_NAMES      # (miR-451a, miR-23a-3p) as MirGeneDB names per species
 
@@ -77,17 +78,15 @@ TIER_GROUPS = [(r'univec', 'UniVec'), (r'spike', 'spike-ins'), (r'rrna', 'rRNA')
 # multimapper/antisense removal) uses the same groups as the tier plot (before removal); review 2026-10-07.
 # Since 0.3.0 the groups come from the class table (column group; refTables.py), which keeps the grouping
 # described here. Checked on the human assets: the features of each class lie in one reference, except 42
-# Ensembl rRNA genes (36 5S, 6 5.8S) in the Ensembl ncRNA reference (class rRNA). UniVec reads are their own
-# class since 0.3.0 (3g; group UniVec); the genome tier is split into its two groups (#9). Unlisted classes
-# (lncRNA, snRNA, snoRNA, scaRNA, misc_RNA) are in the Ensembl ncRNA reference. Mt_rRNA and Mt_tRNA are in it
-# too and stay with it for now: where to show them waits for RealSeq's answer.
+# Ensembl rRNA genes (36 5S, 6 5.8S) in the Ensembl ncRNA reference (class rRNA; sub-reference ncrna_other since 0.4.0). UniVec reads are their own
+# class since 0.3.0 (group UniVec); the genome tier is split into its two groups (#9). Unlisted classes
+# (lncRNA, snRNA, snoRNA, scaRNA, misc_RNA) are in the Ensembl ncRNA reference, which is four sub-references since
+# 0.4.0 (ncrna_mt, ncrna_snsno, ncrna_other, ncrna_lnc; the pattern 'ncrna' groups all four). Mt_rRNA and Mt_tRNA are
+# in it too and stay with it for now: where to show them waits for RealSeq's answer.
 # Groups in the order of the reference stack (logs/map.log), in both plots; groups of an own class table that
 # are not listed here follow them.
 GROUP_ORDER = ['UniVec', 'spike-ins', 'rRNA', 'tRNA', 'miRNA', 'piRNA', 'lncRNA and other ncRNA', 'protein_coding',
                GENOME_PRE, GENOME_UNANNOTATED]
-# Group names of class tables copied into runs before the report changes of 0.3.0 (S4)
-OLD_GROUPS = {'mRNA': 'protein_coding', 'genome, precursors, introns': GENOME_PRE,
-              'not aligned': 'unmapped'}   # S5 review (Martin 2026-10-26): one word for reads aligned in no tier
 # Read-length plots: classes with a button of their own (RealSeq review #13, Martin 2026-10-26); the reads of
 # every other natural class are pooled under "Other RNAs"; genome (unannotated) comes last (#14).
 OWN_LENGTH_BUTTON = {'rRNA', 'Mt_rRNA', 'tRNA', 'Mt_tRNA', 'miRNA', 'pre-miRNA', 'piRNA', 'snRNA', 'snoRNA', 'lncRNA',
@@ -104,10 +103,12 @@ def terms(lead, items, after=''):
 GLOSSARY = [
     ('RNA class', 'rRNA, tRNA, miRNA, ...: what a read is counted as (the class table, in the section Tiers and RNA '
                   'classes)'),
-    ('Tier', 'one reference in the mapping order (UniVec, spike-ins, rRNA, tRNA, miRNA, piRNA, Ensembl ncRNA, Ensembl '
+    ('Tier', 'one reference in the mapping order (UniVec, spike-ins, rRNA, tRNA, miRNA, piRNA, the four parts of Ensembl '
+             'ncRNA (mitochondrial; snRNA and snoRNA; other; lncRNA), Ensembl '
              'cDNA, genome); a read aligned in one tier is not offered to the later tiers'),
     ('Multimapper', 'a read with two or more equally good best alignments; removed with remove_multimap'),
-    ('Antisense read', 'a read that aligns once, on the opposite strand of its feature; removed with remove_antisense'),
+    ('Antisense read', 'a read whose alignment (for a multimapper: the picked one) lies on the opposite strand of its '
+                       'feature; removed with remove_antisense, keeps its RNA class otherwise'),
     ('Kept reads', 'the mapped reads after the multimapper and antisense settings'),
     ('Natural reads', 'the kept reads without the spike-ins and the vector contaminants (UniVec)'),
     ('Feature', 'a row of the gene table: a gene, a miRNA arm, a tRNA family, ...'),
@@ -127,13 +128,9 @@ def default_classes():
 
 
 def type_group(rna_class, classes=None):
-    """Report group of an RNA class: the class table's column group (RiboSpike-*: spike-ins); group names of
-    tables copied into runs before 0.3.0 S4 are translated (OLD_GROUPS)."""
+    """Report group of an RNA class: the class table's column group (RiboSpike-*: spike-ins)."""
     classes = classes or default_classes()
-    group = classes.group(rna_class)
-    if rna_class == unannotated_class(classes):
-        return GENOME_UNANNOTATED if group in OLD_GROUPS else group
-    return OLD_GROUPS.get(group, group)
+    return classes.group(rna_class)
 
 
 def unannotated_class(classes=None):
@@ -142,9 +139,13 @@ def unannotated_class(classes=None):
 
 
 def natural(rna_class, classes=None):
-    """True for the classes of natural RNA: every kept class except the spike-ins and UniVec (0.3.0 plan §8 item
-    11; the collector's assign.natural_mean_length uses the same classes)."""
-    return rna_class != (classes or default_classes()).class_of('UniVec') and not rna_class.startswith('RiboSpike')
+    """True for the classes of natural RNA: every kept class except the spike-ins and UniVec (release
+    0.3.0). Spike-ins: the class table's group spike-ins (RiboSpike-*, miND) and RiboSpike-* by name, as in the
+    collector's qcCollect.natural_classes (assign.natural_mean_length; 0.4.0 cleanup: miND counted as natural
+    here before)."""
+    classes = classes or default_classes()
+    return (rna_class != classes.class_of('UniVec') and not rna_class.startswith('RiboSpike')
+            and classes.group(rna_class) != 'spike-ins')
 
 
 def class_order(rna_classes, classes=None):
@@ -169,8 +170,20 @@ def ordered_groups(groups):
     return [g for g in GROUP_ORDER if g in groups] + [g for g in groups if g not in GROUP_ORDER]
 
 
+def order_names(tables):
+    """The order in effect from <run>/tables/order.tsv, or None (runs before release 0.4.0)."""
+    path = Path(tables) / 'order.tsv'
+    return mapSchedule.read_order(path) if path.exists() else None
+
+
 def run_tiers(run):
-    """Tier names in tier order (from the collected map.{tier}.reads_in ids)."""
+    """Tier names in tier order: from tables/schedule.tsv (release 0.4.0; with --passes there are no per-tier reads_in
+    ids), else from the collected map.{tier}.reads_in ids."""
+    schedule = Path(run.out) / 'tables' / 'schedule.tsv' if getattr(run, 'out', None) else None
+    if schedule is not None and schedule.exists():
+        rows = mapSchedule.read_schedule(schedule)
+        index_of = {r['reference']: r['index_name'] for r in rows}
+        return [index_of[n] for n in mapSchedule.in_order(rows, order_names(schedule.parent))]
     return [metric_id.split('.')[1] for metric_id in run.ids(r'map\.[^.]+\.reads_in')]
 
 
@@ -372,15 +385,15 @@ def tier_fate(run):
     return {**PARENT, 'id': 'ribomarker_tiers', 'section_name': 'Mapping per reference tier',
             'description': terms(
                 'Reads aligned per tier, counted before the multimapper/antisense settings; the tiers are searched in '
-                'order, so a read aligned in one tier is not offered to the later tiers. The composition plot below '
-                'uses the same groups.', [
+                'order, so a read aligned in one tier is not offered to the later tiers. With a passes file the numbers are '
+                'summed over the passes. The composition plot below uses the same groups.', [
                     ('UniVec', 'vector contaminants (Bowtie 1: one alignment per read)'),
                     ('spike-ins', 'the RiboSpike sequences'),
                     ('rRNA', 'the miRTrace rRNA reference (Bowtie 1: one alignment per read)'),
                     ('tRNA', 'mature tRNAs (GtRNAdb)'),
                     ('miRNA', 'the three MirGeneDB tiers together: mature arms, star arms, precursors'),
                     ('piRNA', 'piRBase'),
-                    ('lncRNA and other ncRNA', 'the Ensembl ncRNA tier: lncRNA, snRNA, snoRNA, scaRNA, misc_RNA, '
+                    ('lncRNA and other ncRNA', 'the four Ensembl ncRNA tiers: lncRNA, snRNA, snoRNA, scaRNA, misc_RNA, '
                                                'Mt_rRNA, Mt_tRNA (and 42 rRNA genes: 36 5S, 6 5.8S)'),
                     ('protein_coding', 'the Ensembl cDNA tier: one mature transcript per gene (the longest), i.e. its '
                                        'exons with the 5′ and 3′ UTRs; no introns'),
@@ -527,7 +540,7 @@ def multimapping(run):
     """What happened to the mapped reads (kept / removed as multimappers / removed as antisense), with the
     share of reads with a second (not necessarily equally good) alignment per tier in a table below."""
     parts = [('assign.kept', 'kept'), ('assign.removed_multimap', 'removed: multimapper'),
-             ('assign.removed_antisense', 'removed: antisense, maps once')]
+             ('assign.removed_antisense', 'removed: antisense')]
     data = {s: {name: run.value(s, metric_id) for metric_id, name in parts if run.value(s, metric_id) is not None}
             for s in run.samples}
     data = {s: row for s, row in data.items() if len(row) == len(parts)}
@@ -535,7 +548,7 @@ def multimapping(run):
         return None
     categories = {'kept': {'name': 'kept', 'color': NEUTRAL_LIGHT},
                   'removed: multimapper': {'name': 'removed: multimapper', 'color': FATE_COLOURS[0]},
-                  'removed: antisense, maps once': {'name': 'removed: antisense, maps once', 'color': FATE_COLOURS[1]}}
+                  'removed: antisense': {'name': 'removed: antisense', 'color': FATE_COLOURS[1]}}
     tiers = [m.split('.')[1] for m in run.ids(r'map\.[^.]+\.aligned_multi')]
     rows = []
     for s in run.samples:
@@ -550,8 +563,9 @@ def multimapping(run):
     return {**PARENT, 'id': 'ribomarker_multimapping', 'section_name': 'Multimappers and antisense reads',
             'description': terms('The mapped reads: kept, or removed by the multimapper/antisense settings.', [
                 ('removed: multimapper', 'two or more equally good best alignments (remove_multimap)'),
-                ('removed: antisense, maps once', 'one alignment, on the opposite strand of its feature '
-                                                  '(remove_antisense)'),
+                ('removed: antisense', 'on the opposite strand of its feature (remove_antisense); with '
+                                       'remove_multimap on, only reads that map once: antisense multimappers count '
+                                       'as multimappers'),
                 ('UniVec, rRNA, spike-ins', 'these tiers report one alignment per read, so their reads are never '
                                             'multimappers; rRNA is most of the mapped reads')],
                 '<details><summary>Reads with a second reported alignment, per tier (% of the reads aligned in the '
@@ -629,19 +643,6 @@ def html_table(headers, rows):
     head = ''.join(f'<th>{html.escape(h)}</th>' for h in headers)
     body = ''.join('<tr>' + ''.join(f'<td>{cell}</td>' for cell in row) + '</tr>' for row in rows)
     return f'<table class="table table-condensed table-hover"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>'
-
-
-def lane_table(run):
-    """Reads per lane of the samples whose lane files were merged; no section without lanes."""
-    ids = run.ids(r'trim\.L\d+\.(pairs|reads)_in')
-    if not ids:
-        return None
-    headers = ['Sample'] + [metric_id.split('.')[1] for metric_id in ids]
-    rows = [[html.escape(s)] + [fmt(run.value(s, metric_id)) for metric_id in ids] for s in run.samples]
-    return {**PARENT, 'id': 'ribomarker_lane_table', 'section_name': 'Reads per lane',
-            'description': 'Reads (paired-end: read pairs) of each sequencing lane, for the samples whose lane '
-                           'files were merged before trimming; a sample\'s lanes add up to its reads in.',
-            'plot_type': 'html', 'data': html_table(headers, rows)}
 
 
 def spike_table(run):
@@ -759,14 +760,25 @@ def check_summary(run):
                      if statuses.count(s))
 
 
+def non_default(run):
+    """The experimental alignment controls this run used instead of the default (release 0.4.0):
+    from the 'replaced' flags of prov.class_tables."""
+    tables = run.report.get('provenance', {}).get('prov.class_tables') or {}
+    names = {'tiers': 'another order of the references (--tiers)', 'passes': 'alignment passes (--passes)'}
+    return [names[key] for key in ('tiers', 'passes') if (tables.get(key) or {}).get('replaced')]
+
+
 def status_line(run):
     """One line at the top of the Samples section (Martin 2026-10-26): the checks and warnings at a glance; the
-    details are under General Statistics."""
+    details are under General Statistics. A run with --tiers or --passes says so first."""
     report = run.report
     problems = sum(c['status'] in ('differs', 'not evaluable') for c in report.get('checks', []))
     warnings = len(report['warnings'])
     details = ' (details under General Statistics)' if problems or warnings else ''
-    return (f'<b>Consistency checks:</b> {html.escape(check_summary(run))}{details if problems else ""}. '
+    controls = non_default(run)
+    flag = (f'<b>Non-default settings (experimental):</b> {html.escape(" and ".join(controls))}; the default '
+            'settings are the validated ones (see Tiers and RNA classes). ') if controls else ''
+    return (f'{flag}<b>Consistency checks:</b> {html.escape(check_summary(run))}{details if problems else ""}. '
             f'<b>Warnings:</b> {warnings or "none"}{details if warnings else ""}.')
 
 
@@ -911,7 +923,7 @@ def samples_table(run):
 
 
 def colour_selector(run):
-    """The 'Colour samples by' selector above the sample table (Martin 2026-10-26, S4c): report.js fills it and
+    """The 'Colour samples by' selector above the sample table (Martin 2026-10-26): report.js fills it and
     colours the samples by the chosen sample-sheet column in every plot and table through MultiQC's highlighting.
     Its data (samples, the values of every sheet column except the FASTQ files, the palette, the first choice =
     report_group) travel base64-encoded, so that MultiQC's Markdown reading of descriptions cannot change them.
@@ -954,7 +966,7 @@ def sample_colours(run):
 
 
 def tables_section(run):
-    """The tier list and the RNA class table of the run (0.3.0 plan, item 4: shown in the report)."""
+    """The tier list and the RNA class table of the run (shown in the report since 0.3.0)."""
     out = Path(run.out) if getattr(run, 'out', None) else None
     parts = []
     tiers_file = out / 'tables' / 'tiers.csv' if out else None
@@ -964,6 +976,20 @@ def tables_section(run):
                      + html_table(['#', 'Aligner', 'Index'],
                                   [[str(i + 1), html.escape(r[0]), html.escape(Path(r[1]).name if len(r) > 1 else '')]
                                    for i, r in enumerate(rows)])
+                     + '</details>')
+    schedule_file = out / 'tables' / 'schedule.tsv' if out else None
+    if schedule_file and schedule_file.exists():          # release 0.4.0 (mapSchedule.py)
+        rows = mapSchedule.read_schedule(schedule_file)
+        names = mapSchedule.in_order(rows, order_names(schedule_file.parent))
+        passes = sorted({int(r['pass']) for r in rows})
+        aligner = {r['reference']: r['aligner'] for r in rows}
+        words = {(r['reference'], int(r['pass'])): mapSchedule.cell_words(r, i == len(rows) - 1)
+                 for i, r in enumerate(rows)}
+        parts.append('<details><summary>Mapping schedule (references down, passes across)</summary>'
+                     + html_table(['Step', 'Reference', 'Aligner'] + [f'Pass {p}' for p in passes],
+                                  [[str(i), html.escape(n), html.escape(aligner[n])]
+                                   + [html.escape(words.get((n, p), '-')) for p in passes]
+                                   for i, n in enumerate(names, 1)])
                      + '</details>')
     classes = run.classes or default_classes()
     by_class = {}
@@ -978,16 +1004,16 @@ def tables_section(run):
                                for c in order])
                  + '</details>')
     return {**PARENT, 'id': 'ribomarker_tables', 'section_name': 'Tiers and RNA classes',
-            'description': 'The tier list and the RNA class table this run used (their files and checksums are under '
-                           'Provenance). The class table gives each BED label its RNA class, the class\'s name in '
-                           'the report, its group in the tier and composition plots, its order, and whether it is '
-                           'in the gene table.',
+            'description': 'The tier list, the mapping schedule and the RNA class table this run used (their files and '
+                           'checksums are under Provenance). The class table gives each BED label its RNA class, the '
+                           'class\'s name in the report, its group in the tier and composition plots, its order, and '
+                           'whether it is in the gene table.',
             'plot_type': 'html', 'data': ''.join(parts)}
 
 
 MULTIQC_VERSION = '1.35'   # the version report.js was written for (docker/env.lock.txt pins it)
 
-SECTIONS = [samples_table, guide, general_stats, lane_table, read_fate, tier_fate, composition, multimapping, lengths,
+SECTIONS = [samples_table, guide, general_stats, read_fate, tier_fate, composition, multimapping, lengths,
             spike_table, spike_offsets, spike_recovery, counts_table, tables_section, provenance]
 
 
@@ -1027,7 +1053,7 @@ def main():
                                          'this repository; the Snakefile passes <Snakefile folder>/qc)')
     parser.add_argument('--title', help='report title (default: the run id; the run command sets it)')
     args = parser.parse_args()
-    global DICTIONARY_FILE, MULTIQC_CONFIG      # inside the compiled Docker binary __file__ is not in the repository
+    global DICTIONARY_FILE, MULTIQC_CONFIG      # the Snakefile passes the folder explicitly
     if args.qc_dir:
         DICTIONARY_FILE = Path(args.qc_dir) / 'metrics.yaml'
         MULTIQC_CONFIG = Path(args.qc_dir) / 'multiqc_config.yaml'

@@ -7,14 +7,12 @@ import sys
 import pandas as pd
 import os
 from datetime import datetime
-import warnings
 import gzip
 from collections import defaultdict
 from toolRun import run  # stops on a failed tool
 from Bio import SeqIO
 import tqdm
 import numpy as np
-warnings.filterwarnings("ignore")
 import json
 
 class TrimReads():
@@ -33,52 +31,16 @@ class TrimReads():
 
     def generate_sampleinfo(self):
         '''
-        Generates a list of samples from the sample metadata file if provided. Else, uses all fastq files in the current directory.
+        Reads the sample sheet (sample,group,fastq; paired-end: sample,group,fastq,fastq_2).
         '''
 
-        if self.args.samples == 'default':
-
-            if self.args.paired == True:
-                print(f'No sample metadata file provided. Does not work with paired-end reads.')
-                sys.exit(1)
-
-            print(f'No sample metadata file provided. Using all fastq files in the current directory.')
-
-            ## get all fastq files in the current directory
-            fastqlist = [f for f in os.listdir() if f.endswith('.fastq') or f.endswith('.fq') or f.endswith('.fastq.gz') or f.endswith('.fq.gz')]
-            ## sorts the list
-            fastqlist = sorted(fastqlist)
-            samplelist = [f.split('.')[0] for f in fastqlist]
-
-            self.sampleinfo = {}
-
-            for idx, sample in enumerate(samplelist):
-
-                self.sampleinfo[sample] = {'group': sample, 'fastq': fastqlist[idx]}
-
-        else:
-
-            if self.args.paired == False:
-                print(f'Using sample metadata file: {self.args.samples}')
-                sampledf = pd.read_csv(self.args.samples, sep=',', names=['sample', 'group', 'fastq'])
-                sampledf = sampledf.set_index('sample')
-
-                ## check if the fastqdir argument is provided
-                # os.path.join keeps an absolute name as it is (merged lanes)
-                if self.args.fastqdir != 'default':
-                    sampledf['fastq'] = sampledf['fastq'].apply(lambda x: os.path.join(self.args.fastqdir, x))
-
-            elif self.args.paired == True:
-                print(f'Using sample metadata file: {self.args.samples}')
-                sampledf = pd.read_csv(self.args.samples, sep=',', names=['sample', 'group', 'fastq', 'fastq_2'])
-                sampledf = sampledf.set_index('sample')
-
-                ## check if the fastqdir argument is provided
-                if self.args.fastqdir != 'default':
-                    sampledf['fastq'] = sampledf['fastq'].apply(lambda x: os.path.join(self.args.fastqdir, x))
-                    sampledf['fastq_2'] = sampledf['fastq_2'].apply(lambda x: os.path.join(self.args.fastqdir, x))
-
-            self.sampleinfo = sampledf.to_dict(orient='index')
+        print(f'Using sample metadata file: {self.args.samples}')
+        columns = ['sample', 'group', 'fastq', 'fastq_2'] if self.args.paired else ['sample', 'group', 'fastq']
+        sampledf = pd.read_csv(self.args.samples, sep=',', names=columns).set_index('sample')
+        if self.args.fastqdir != 'default':      # os.path.join keeps an absolute name as it is
+            for column in columns[2:]:
+                sampledf[column] = sampledf[column].apply(lambda x: os.path.join(self.args.fastqdir, x))
+        self.sampleinfo = sampledf.to_dict(orient='index')
 
         self.logdata['samples'] = sorted(self.sampleinfo.keys())
         self.logdata['threads'] = self.args.threads
@@ -93,53 +55,24 @@ class TrimReads():
 
     def feed_trimming(self):
         '''
-        Feeds the samples to the appropriate trimming function based on the library type.
+        Trims the reads of each sample (RealSeq library, cutadapt) and parses the trimming logs.
         '''
 
-        samples = self.sampleinfo.keys()
-        samples = sorted(samples)
-
-        
-        for sample in samples:
-
+        for sample in sorted(self.sampleinfo):
             fastq = self.sampleinfo[sample]['fastq']
-
-            print(f'Trimming reads for {sample} | {fastq} | {self.args.library} | {self.args.tool}')
-
-            if self.args.library == 'RSB':
-
-                if self.args.paired == True:
-                    fastq2 = self.sampleinfo[sample]['fastq_2']
-                    self.trim_reads_rsb_paired(sample, fastq, fastq2, self.args.tool)
-
-                elif self.args.paired == False:
-
-                    self.trim_reads_rsb(sample, fastq, self.args.tool)
-                    self.fastqc(sample, 'raw')
-                    self.fastqc(sample, 'trimmed')
-                    
-            elif self.args.library == 'SMART':
-
-                if self.args.paired == True:
-                    self.trim_reads_smart_paired(sample, fastq, self.args.tool)
-
-                elif self.args.paired == False:
-                    print('Paired-end reads needs to be implemented.')
-                    sys.exit(1)
-                    self.trim_reads_smart(sample, fastq, self.args.tool)
-
+            print(f'Trimming reads for {sample} | {fastq}')
+            if self.args.paired:
+                self.trim_reads_rsb_paired(sample, fastq, self.sampleinfo[sample]['fastq_2'])
             else:
-                print(f'Library type not recognized. Please specify either RSB or SMART.')
-                sys.exit(1)
-
+                self.trim_reads_rsb(sample, fastq)
+                self.fastqc(sample, 'raw')
+                self.fastqc(sample, 'trimmed')
             print('-' * 50)
 
-        if self.args.library == 'RSB':
-            if self.args.paired == False:
-                self.parse_logfiles_rsb()
-            elif self.args.paired == True:
-                self.parse_logfiles_rsb_paired()
-        # sys.exit()
+        if self.args.paired:
+            self.parse_logfiles_rsb_paired()
+        else:
+            self.parse_logfiles_rsb()
 
         outdata = pd.DataFrame.from_dict(self.sampleinfo, orient='index')
         outdata.index.name = 'sample'          # first column named (release 0.3.0; unnamed before)
@@ -149,7 +82,7 @@ class TrimReads():
         print('-' * 50)
         return
 
-    def trim_reads_rsb(self, sample, fastq, tool):
+    def trim_reads_rsb(self, sample, fastq):
         '''
         Trims adapters from fastq files. RealSeq library.
         '''
@@ -170,52 +103,19 @@ class TrimReads():
             print(f'{output_fq} already exists. Skipping...')
             self.sampleinfo[sample]['trimmed_fastq'] = output_fq.replace(f'{self.args.output}/', '')
             if len(self.logdata['tools']) == 0:
-                self.logdata['tools'].append(tool)
+                self.logdata['tools'].append('cutadapt')
                 self.logdata['commands'].append(f'cutadapt -O 1 -j {threads} -u 1 -m 15 -Z -a TGGAATTCTCGGGTGCCAAGG')
             return
-        if 'NEB' in sample:
-
-            if tool == 'cutadapt':
-                cmd = f'cutadapt -O 1 -j {threads} -m 1 -Z -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC -o {dimer_fq}  {fastq} > {trimlogdir}/{sample}.dimerlog'
-                # cmd = f'cutadapt -O 1 -j {threads} -u 1 -m 1 -Z -a TGGAATTCTCGGGTGCCAAGG -o {dimer_fq} {fastq} > {trimlogdir}/{sample}.dimerlog'
-                run(cmd)
-                cmd = f'cutadapt -O 1 -j {threads} -m 15 -Z -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC -o {output_fq} {fastq} > {trimlogdir}/{sample}.trimlog'
-                # cmd = f'cutadapt -O 1 -j {threads} -u 1 -m 15 -Z -a TGGAATTCTCGGGTGCCAAGG -o {output_fq} {fastq} > {trimlogdir}/{sample}.trimlog'
-                run(cmd)
+        if 'NEB' in sample:      # NEB adapter for sample names with NEB (kept until RealSeq answers; release 0.4.0)
+            cmd = f'cutadapt -O 1 -j {threads} -m 1 -Z -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC -o {dimer_fq}  {fastq} > {trimlogdir}/{sample}.dimerlog'
+            run(cmd)
+            cmd = f'cutadapt -O 1 -j {threads} -m 15 -Z -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC -o {output_fq} {fastq} > {trimlogdir}/{sample}.trimlog'
+            run(cmd)
         else:
-            if tool == 'cutadapt':
-                # cmd = f'cutadapt -O 1 -j {threads} -m 1 -Z -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC -o {dimer_fq}  {fastq} > {self.args.output}/trimming/{sample}.dimerlog'
-                cmd = f'cutadapt -O 1 -j {threads} -u 1 -m 1 -Z -a TGGAATTCTCGGGTGCCAAGG --json {trimlogdir}/{sample}.dimer.cutadapt.json -o {dimer_fq} {fastq} > {trimlogdir}/{sample}.dimerlog'
-                run(cmd)
-                # cmd = f'cutadapt -O 1 -j {threads} -m 15 -Z -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC -o {output_fq} {fastq} > {self.args.output}/trimming/{sample}.trimlog'
-                cmd = f'cutadapt -O 1 -j {threads} -u 1 -m 15 -Z -a TGGAATTCTCGGGTGCCAAGG --json {trimlogdir}/{sample}.trim.cutadapt.json -o {output_fq} {fastq} > {trimlogdir}/{sample}.trimlog'
-                run(cmd)
-
-            elif tool == 'fastp':
-
-                cmd = f'fastp -i {fastq} \
-                -o {dimer_fq} \
-                -j {self.args.output}/trimming/{sample}.dimer.json \
-                -w {threads} \
-                --adapter_sequence=TGGAATTCTCGGGTGCCAAGG \
-                -l 1 \
-                --trim_front1 1 \
-                --trim_poly_g \
-                2> {self.args.output}/trimming/{sample}.dimerlog'
-
-                run(cmd)
-
-                cmd = f'fastp -i {fastq} \
-                -o {output_fq} \
-                -j {self.args.output}/trimming/{sample}.trim.json \
-                -w {threads} \
-                --adapter_sequence=TGGAATTCTCGGGTGCCAAGG \
-                -l 15 \
-                --trim_front1 1 \
-                --trim_poly_g \
-                2> {self.args.output}/trimming/{sample}.trimlog'
-
-                run(cmd)
+            cmd = f'cutadapt -O 1 -j {threads} -u 1 -m 1 -Z -a TGGAATTCTCGGGTGCCAAGG --json {trimlogdir}/{sample}.dimer.cutadapt.json -o {dimer_fq} {fastq} > {trimlogdir}/{sample}.dimerlog'
+            run(cmd)
+            cmd = f'cutadapt -O 1 -j {threads} -u 1 -m 15 -Z -a TGGAATTCTCGGGTGCCAAGG --json {trimlogdir}/{sample}.trim.cutadapt.json -o {output_fq} {fastq} > {trimlogdir}/{sample}.trimlog'
+            run(cmd)
 
         ## Remove dimer file
         run(f'rm -f {dimer_fq}')
@@ -223,7 +123,7 @@ class TrimReads():
         self.sampleinfo[sample]['trimmed_fastq'] = output_fq.replace(f'{self.args.output}/', '')
 
         if len(self.logdata['tools']) == 0:
-            self.logdata['tools'].append(tool)
+            self.logdata['tools'].append('cutadapt')
             self.logdata['commands'].append(f'cutadapt -O 1 -j {threads} -u 1 -m 15 -Z -a TGGAATTCTCGGGTGCCAAGG')
 
         print(f'Finished trimming reads for {sample} | {output_fq}')
@@ -231,7 +131,7 @@ class TrimReads():
 
         return
     
-    def trim_reads_rsb_paired(self, sample, fastq, fastq2, tool):
+    def trim_reads_rsb_paired(self, sample, fastq, fastq2):
         '''
         Trims adapters from fastq files. RealSeq library using paired-end reads.
         '''
@@ -260,42 +160,14 @@ class TrimReads():
         # RiboMarker inserts carry ONE extra base at their 5' end (protocol, Appendix D), i.e. at the
         # start of R1 -> '-u 1'. R2 starts at the insert's 3' end, which has no extra base, so R2 is
         # not clipped (the former '-U 1' removed the last real base of every insert; fixed 2026-09-29).
-        if tool == 'cutadapt':
-            
-            cmd = f'cutadapt -O 1 -j {threads} -u 1 -m 1 -Z -a TGGAATTCTCGGGTGCCAAGG -A TGATCGTCGGACT --json {trimlogdir}/{sample}.dimer.cutadapt.json -o {dimer_fq_r1} -p {dimer_fq_r2} {fastq} {fastq2} > {trimlogdir}/{sample}.dimerlog'
-            run(cmd)
+        cmd = f'cutadapt -O 1 -j {threads} -u 1 -m 1 -Z -a TGGAATTCTCGGGTGCCAAGG -A TGATCGTCGGACT --json {trimlogdir}/{sample}.dimer.cutadapt.json -o {dimer_fq_r1} -p {dimer_fq_r2} {fastq} {fastq2} > {trimlogdir}/{sample}.dimerlog'
+        run(cmd)
 
-            cmd = f'cutadapt -O 1 -j {threads} -u 1 -m 15 -Z -a TGGAATTCTCGGGTGCCAAGG -A TGATCGTCGGACT --json {trimlogdir}/{sample}.trim.cutadapt.json -o {output_fq_r1} -p {output_fq_r2} {fastq} {fastq2} > {trimlogdir}/{sample}.trimlog'
-            run(cmd)
+        cmd = f'cutadapt -O 1 -j {threads} -u 1 -m 15 -Z -a TGGAATTCTCGGGTGCCAAGG -A TGATCGTCGGACT --json {trimlogdir}/{sample}.trim.cutadapt.json -o {output_fq_r1} -p {output_fq_r2} {fastq} {fastq2} > {trimlogdir}/{sample}.trimlog'
+        run(cmd)
 
-            run(f'fastp -i {output_fq_r1} -I {output_fq_r2} --merged_out {trimmeddir}/{sample}.merged.fq.gz --merge --thread {threads} --overlap_len_require 10 --overlap_diff_limit 2 --disable_adapter_trimming -j {trimlogdir}/{sample}.fastp.json -h {trimlogdir}/{sample}.fastp.html')
-            print(f'Merged {output_fq_r1} and {output_fq_r2} into {trimmeddir}/{sample}.merged.fq.gz')
-
-        # elif tool == 'fastp':
-
-        #     cmd = f'fastp -i {fastq} \
-        #     -o {dimer_fq} \
-        #     -j {self.args.output}/trimming/{sample}.dimer.json \
-        #     -w {threads} \
-        #     --adapter_sequence=TGGAATTCTCGGGTGCCAAGG \
-        #     -l 1 \
-        #     --trim_front1 1 \
-        #     --trim_poly_g \
-        #     2> {self.args.output}/trimming/{sample}.dimerlog'
-
-        #     os.system(cmd)
-
-        #     cmd = f'fastp -i {fastq} \
-        #     -o {output_fq} \
-        #     -j {self.args.output}/trimming/{sample}.trim.json \
-        #     -w {threads} \
-        #     --adapter_sequence=TGGAATTCTCGGGTGCCAAGG \
-        #     -l 15 \
-        #     --trim_front1 1 \
-        #     --trim_poly_g \
-        #     2> {self.args.output}/trimming/{sample}.trimlog'
-
-        #     os.system(cmd)
+        run(f'fastp -i {output_fq_r1} -I {output_fq_r2} --merged_out {trimmeddir}/{sample}.merged.fq.gz --merge --thread {threads} --overlap_len_require 10 --overlap_diff_limit 2 --disable_adapter_trimming -j {trimlogdir}/{sample}.fastp.json -h {trimlogdir}/{sample}.fastp.html')
+        print(f'Merged {output_fq_r1} and {output_fq_r2} into {trimmeddir}/{sample}.merged.fq.gz')
 
         ## Remove dimer file
         run(f'rm -f {dimer_fq_r1}')
@@ -307,49 +179,6 @@ class TrimReads():
 
         print(f'Finished trimming reads for {sample} | {output_fq_r1} | {output_fq_r2}')
         print('-' * 50)
-
-        return
-
-    def trim_reads_smart_paired(self, sample, fastq, tool):
-        '''
-        Trims adapters from fastq files. SMART library using paired-end reads.
-        '''
-        
-        threads = self.args.threads
-        r1_trimmed_fq = f'{self.args.output}/{sample}.trimmed.R1.fq.gz'
-        r2_trimmed_fq = f'{self.args.output}/{sample}.trimmed.R2.fq.gz'
-        r1_tmp_fq = f'{self.args.output}/{sample}.tmp.R1.fq.gz'
-        r2_tmp_fq = f'{self.args.output}/{sample}.tmp.R2.fq.gz'
-
-        ## check if the trimmed fastq files already exist
-        if os.path.isfile(r1_trimmed_fq) and os.path.isfile(r2_trimmed_fq):
-            print(f'Trimmed fastq files for {sample} already exist. Skipping trimming...')
-            return
-        
-        print(f'Removing UMI and dedup for: {sample}')
-        run(f'fastp \
-                --dedup \
-                -i {fastq} \
-                -o {r1_tmp_fq} \
-                -I {fastq.replace("_R1", "_R2")} \
-                -O {r2_tmp_fq} \
-                -j {self.args.output}/logs/{sample}.umilog.json \
-                -w {threads} \
-                --umi --umi_loc read2 --umi_len 8 --trim_front2=6')
-        
-        print(f'Trimming sample: {sample}')
-        run(f'fastp \
-                --adapter_sequence AGATCGGAAGAGC \
-                --adapter_sequence_r2 AGATCGGAAGAGC \
-                -i {r1_tmp_fq} \
-                -o {r1_trimmed_fq} \
-                -I {r2_tmp_fq} \
-                -O {r2_trimmed_fq} \
-                -j {self.args.output}/logs/{sample}.trimlog.json \
-                -w {threads}')
-        
-        print(f'Trimmed R1 file: {r1_trimmed_fq}')
-        print(f'Trimmed R2 file: {r2_trimmed_fq}')
 
         return
 
@@ -566,36 +395,6 @@ class TrimReads():
             }
         return stats
 
-    def subsample_fastq(self):
-        '''
-        Subsamples fastq files to a specified number of reads.
-        '''
-        subsample_dir = f'{self.args.output}/subsample'
-        if not os.path.exists(subsample_dir):
-            os.mkdir(subsample_dir)
-
-        subsample_amount = self.args.subsample
-        self.logdata['subsample'] = f'Subsampled reads to {subsample_amount} reads.'
-        self.logdata['tools'].append('seqtk')
-        self.logdata['commands'].append(f'seqtk sample -s100 -{subsample_amount}')
-        print(f'Subsampling reads to {subsample_amount} reads.')
-
-        for sample in self.samplelist:
-            output_file = f'{subsample_dir}/{sample}.subsample.fq.gz'
-
-            # Skip if already subsampled
-            if os.path.exists(output_file):
-                print(f'{output_file} already exists. Skipping...')
-                self.fastqDict[sample] = output_file
-                continue
-
-            fastq = self.fastqDict[sample]
-            cmd = f'seqtk sample -s100 {fastq} {subsample_amount} | pigz > {output_file}'
-            run(cmd)
-
-            print(f'Finished subsampling {sample}')
-            self.fastqDict[sample] = output_file
-
     def generate_module_logfile(self):
         '''
         Generates a log file for the module.
@@ -631,29 +430,12 @@ class TrimReads():
 
         return
 
-    def generate_new_samplefile_subsampleonly(self):
-        '''
-        Adds a new column to the sample metadata file with the new fastq file paths.
-        '''
-
-        if self.args.paired == True:
-            self.sampleinfo['fastq'] = f'{self.args.output}/subsample/' + self.sampleinfo['sample'] + '.merged.subsample.fq.gz'
-            self.sampleinfo = self.sampleinfo.drop(columns=['fastq_2'])
-        elif self.args.paired == False:
-            self.sampleinfo['fastq'] = f'{self.args.output}/subsample/' + self.sampleinfo['sample'] + '.subsample.fq.gz'
-            
-        self.sampleinfo.to_csv(f'{self.args.output}/samples.collapse.csv', index=False, header=False)
-
 def main():
     ap = argparse.ArgumentParser(prog=os.path.basename(sys.argv[0]), usage=__doc__)
     ap.add_argument('-s', '--samples', required=False, help='Sample metadata file. Format: sample,group,fastq', default='default')
     ap.add_argument('-@', '--threads', required=False, help='Number of threads to process parallel fastq files with. Default=4', default=4)
     ap.add_argument('-o', '--output', required=True, help='Output prefix.')
-    ap.add_argument('-x', '--subsample', required=False, help='Subsample reads to this number. Default=0; Use all reads.', default=0)
     ap.add_argument('--paired', required=False, help='Paired-end reads', action='store_true')
-    ap.add_argument('--analyze', required=False, help='Whether or not to perform QC analyses.', action='store_true')
-    ap.add_argument('--library', required=False, help='Library type. RSB (RealSeq); SMART (SMART-seq)', default='RSB')
-    ap.add_argument('--tool', required=False, help='Tool to use for trimming.', default='cutadapt')
     ap.add_argument('--fastqdir', required=False, help='Directory containing fastq files. Appends this to the beginning of each file.', default='default')
     args = ap.parse_args()
 
@@ -662,22 +444,10 @@ def main():
     tr = TrimReads(args)
     print('-' * 50)
     print('-' * 50)
-    print('Collapsing Reads...')
+    print('Trimming reads...')
     print('-' * 50)
     print('-' * 50)
 
-    ## check if the samplefile has 3 or 4 columns so we can determine if the reads are paired-end or not
-    #if args.samples != 'default':
-    #    with open(args.samples, 'r') as f:
-    #        line = f.readline()
-    #        if len(line.split(',')) == 4:
-    #            args.paired = True
-    #        else:
-    #            args.paired = False
-    #else:
-    #    print('No sample metadata file provided. Please provide a sample metadata file.')
-    #    sys.exit()
-        
     if args.samples == 'default':
         print('No sample metadata file provided. Please provide a sample metadata file.')
         sys.exit(1)
@@ -695,11 +465,8 @@ def main():
     ## Generate sample metadata
     tr.generate_sampleinfo()
 
-    ## Feed the samples to the appropriate trimming function based on the library type
+    ## Trim the reads of each sample
     tr.feed_trimming()
-
-    ## Parse log files
-    tr.parse_logfiles_rsb()
 
     tr.generate_module_logfile()
 

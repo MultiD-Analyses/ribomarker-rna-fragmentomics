@@ -1,6 +1,5 @@
 import os
 import shutil
-import subprocess
 import sys
 import pandas as pd
 import yaml
@@ -10,19 +9,11 @@ from pathlib import Path
 # Load configuration from YAML file
 ###############################################################################
 
-#configfile: "config.yaml"   ## Comment/uncomment when running localy vs in docker
-
-
-
 # Base input directory (local or container)
 input_dir = config.get("input_dir", ".")
 
 
 dbdir = config.get("dbdir", None)
-
-
-
-
 
 ###############################################################################
 # Get sample file name from config
@@ -30,9 +21,6 @@ dbdir = config.get("dbdir", None)
 
 samples = config.get("samples", "samples.csv")  # Default to samples.csv in input directory
 samples = os.path.join(input_dir, samples)  # Adjust path for Docker
-pairs = config.get("pairs", "default")  # Default to pairs.csv in input directory
-if pairs != "default":
-    pairs = os.path.join(input_dir, pairs)  # Adjust path for Docker
 
 ###############################################################################
 # Load required parameters from config
@@ -40,12 +28,7 @@ if pairs != "default":
 
 output_prefix = config.get("output_prefix", "example")  # Prefix for output files
 species = config.get("species", "human2")  # Species for database selection
-mapper = config.get("mapper", "bowtie2")  # Mapping tool for database selection
-trim_fastq = config.get("trim_fastq", True) # dbpathsWhether or not to trim adapters
 count_ribospike = config.get("count_ribospike", True) # Whether or not to count RiboSpike hits
-trim_only = config.get("trim_only", False) # Whether to only trim reads
-dump_unmapped = config.get("dump_unmapped", False) # Whether to dump unmapped reads
-unique_only = config.get("unique_only", False) # Whether to only keep unique reads
 qc_report = config.get("qc_report", True)  # QC collector + technical report (docker/scripts/qcCollect.py, qcReport.py)
 
 remove_multimap  = config.get("remove_multimap", True)
@@ -59,25 +42,24 @@ elif os.path.exists(samples):
         paired_end = len(_f.readline().strip().split(',')) == 4
 else:
     paired_end = False
-#scriptdir = "scripts" # Script paths (relative to Docker working directory)
 PIPELINE_DIR = Path(workflow.basedir)  # directory containing the Snakefile
 scriptdir = PIPELINE_DIR / "scripts"
-# How the scripts are started: a compiled riboMarker binary if one exists, else Python (the image
-# has run the plain Python scripts since the publication step 2)
-
-ribomarker_exec = os.path.join(scriptdir, "riboMarker")
+ribomarker_exec = f"python {os.path.join(scriptdir, 'main.py')}"   # how the rules start the pipeline scripts
 sys.path.insert(0, str(scriptdir))
 from dbPaths import find_dbpaths  # which dbpaths file to read
 import dbPaths
 import refTables                  # RNA class tables (release 0.3.0)
+import removedKeys                # keys removed in 0.4.0
+import mapSchedule                # order file and mapping schedule (0.4.0)
 
-if not os.path.exists(ribomarker_exec):
-    ribomarker_exec = f"python {os.path.join(scriptdir, 'main.py')}"
-    
-    
+# Keys removed in 0.4.0 (collapse, subsample_reads, trim_fastq, trim_only, dump_unmapped): the old
+# default value is accepted with a warning, any other value stops the run
+_removed_warnings, _removed_errors = removedKeys.check_removed_keys(config)
+for _warning in _removed_warnings:
+    print(f"WARNING: {_warning}", file=sys.stderr)
+if _removed_errors:
+    raise ValueError("settings removed in release 0.4.0:\n  " + "\n  ".join(_removed_errors))
 
-    
-    
 if dbdir is None:
     raise ValueError(
         "dbdir must be set: in-pipeline database building (buildDB) was removed. "
@@ -86,26 +68,34 @@ if dbdir is None:
 dbpaths = find_dbpaths(dbdir, species)
 bedfile = os.path.join(dbdir, f"{species}.bed")
 
-# Tier list and RNA class table (release 0.3.0, refTables.py). A replaced tier list (config key tiers; the run
-# command's --tiers) keeps its relative index paths relative to the references folder and may list only tiers
-# of that folder. The class table: config key rna_classes (--rna-classes) > the references folder's own
+# Mapping schedule, order file and RNA class table. The order file (config key tiers; the run command's --tiers;
+# release 0.4.0, mapSchedule.py) names the references of the folder in the order to use; without it, the order of
+# <species>.dbpaths.csv. The class table: config key rna_classes (--rna-classes) > the references folder's own
 # <species>.rna_classes.tsv > docker/tables/<species>.rna_classes.tsv > docker/tables/default.rna_classes.tsv.
-# Both are copied into <run>/tables/ (rule run_tables) for provenance; the steps read the copies.
+# The schedule, the order in effect, its dbpaths lines and the class table are written into <run>/tables/ (rule
+# run_tables); the steps read those.
 tiers_file = config.get("tiers", None)
-if tiers_file:
-    if not os.path.exists(tiers_file):
-        raise ValueError(f"tiers: file not found: {tiers_file}")
-    _problems = dbPaths.check_tier_list(dbPaths.read_dbpaths(tiers_file, dbdir), dbPaths.read_dbpaths(dbpaths), species)
-    if _problems:
-        raise ValueError(f"tiers: {tiers_file} cannot be used: " + "; ".join(_problems))
-    dbpaths = tiers_file
+passes_file = config.get("passes", None)       # pass settings (0.4.0; experimental)
+for _key, _file in (("tiers", tiers_file), ("passes", passes_file)):
+    if _file and not os.path.exists(_file):
+        raise ValueError(f"{_key}: file not found: {_file}")
+schedule_rows, _left_out, _problems, _warnings = mapSchedule.resolve(dbpaths, species, config.get("multimap", 100),
+                                                                     tiers_file, count_ribospike, passes_file)
+if _problems:
+    raise ValueError(f"tiers/passes: {tiers_file or passes_file or dbpaths} cannot be used: " + "; ".join(_problems))
+if _left_out:
+    print(f"WARNING: tiers: {tiers_file} leaves out {', '.join(_left_out)}; not used in this run", file=sys.stderr)
+for _warning in _warnings:
+    print(f"WARNING: passes: {_warning}", file=sys.stderr)
+order_names = mapSchedule.order_in_effect(dbpaths, species, tiers_file)     # for order.tsv, tiers.csv, the printout
 rna_classes = refTables.find_table(species, dbdir, config.get("rna_classes", None))
 class_table = refTables.ClassTable(rna_classes, species)    # a broken table stops here, before anything runs
-_unknown_tiers = class_table.unknown_tiers(dbPaths.tier_id(index, species)
-                                           for _, index, _ in dbPaths.read_dbpaths(dbpaths, dbdir))
+_unknown_tiers = class_table.unknown_tiers(row["reference"] for row in schedule_rows)
 if _unknown_tiers:
     print(f"WARNING: the RNA class table {rna_classes} names tiers that the tier list does not have: "
-          f"{', '.join(_unknown_tiers)}", file=sys.stderr)
+          f"{', '.join(_unknown_tiers)}{class_table.split_tier_note(_unknown_tiers)}", file=sys.stderr)
+for _warning in class_table.obsolete_rows():
+    print(f"WARNING: {_warning}", file=sys.stderr)
 # Gene symbols and miRBase names (3f): docker/tables/<species>.gene_symbols.tsv when it exists; parseMappings fills
 # the columns only if the table was built for this references BED
 gene_symbols = refTables.gene_symbols_table(species)
@@ -114,10 +104,8 @@ gene_symbols = refTables.gene_symbols_table(species)
 # Load optional parameters from config
 ###############################################################################
 
-collapse = config.get("collapse", True)  # Toggle to collapse reads before mapping
 multimap = config.get("multimap", 100)  # Maximum allowed multimapped reads
 threads = config.get("threads", 20)  # Number of processing threads
-subsample_amount = config.get("subsample_reads", 0)  # Number of reads to subsample
 # Coverage filter: 'all' or comma-separated RNA class ids, no spaces. keep_types is its name before 0.3.0 (still
 # accepted, with a warning); old class names are translated with the class table (refTables.translate_keep).
 if "keep_types" in config:
@@ -133,22 +121,20 @@ keep_classes = refTables.translate_keep(config.get("keep_classes", config.get("k
 
 print("-" * 50)
 print(f"species: {species}")
-print(f"maptools: {mapper}")
 print(f"output_prefix: {output_prefix}")
-print(f"collapse: {collapse}")
 print(f"multimap: {multimap}")
 print(f"threads: {threads}")
 print(f"paired_end: {paired_end}")
-print(f"subsample_amount: {subsample_amount}")
-print(f"trim_fastq: {trim_fastq}")
 print(f"count_ribospike: {count_ribospike}")
-print(f"trim_only: {trim_only}")
-print(f"dump_unmapped: {dump_unmapped}")
-print(f"unique_only: {unique_only}")
 print(f"qc_report: {qc_report}")
-print(f"tiers: {dbpaths}")
+print(f"tiers: {tiers_file or dbpaths}")
+if passes_file:
+    print(f"passes: {passes_file}")
 print(f"rna_classes: {rna_classes}")
 print("-" * 50)
+if os.environ.get("RIBOMARKER_RUN") != "1":    # run (runCommand.py) prints it before it starts Snakemake
+    print(mapSchedule.render(schedule_rows, tiers_file, _left_out, passes_file, order_names))
+    print("-" * 50)
 
 ###############################################################################
 # Functions to dynamically build up output
@@ -157,10 +143,10 @@ print("-" * 50)
 def get_all_outputs(wildcards):
     """
     All final targets of 'rule all': the pipeline outputs plus, with qc_report: True,
-    the QC outputs (not for trim_only runs, which have nothing to map).
+    the QC outputs.
     """
     targets = get_pipeline_outputs(wildcards)
-    if qc_report and not trim_only:
+    if qc_report:
         targets += [f"{output_prefix}/qc/qc_metrics.json", f"{output_prefix}/qc/report_technical.html"]
     return targets
 
@@ -168,33 +154,17 @@ def get_all_outputs(wildcards):
 def get_pipeline_outputs(wildcards):
     """
     Returns a list of all pipeline output targets (everything except the QC outputs).
-    Conditionally includes the trimming output if trim_fastq is True.
     """
     targets = []
 
-    # If trimming is on, include the trimstats CSV
-    if trim_fastq:
-        targets.append(f"{output_prefix}/{output_prefix}-trimstats.csv")
-        targets.append(f"{output_prefix}/samples.trimmed.csv")
-        if paired_end:
-            targets.extend(sample_fastqfiles_merged)
-        else:
-            targets.extend(sample_fastqfiles_trimmed)
+    # Trimming: the trimstats CSV, the sample sheet of the trimmed reads and the reads
+    targets.append(f"{output_prefix}/{output_prefix}-trimstats.csv")
+    targets.append(f"{output_prefix}/samples.trimmed.csv")
+    if paired_end:
+        targets.extend(sample_fastqfiles_merged)
+    else:
+        targets.extend(sample_fastqfiles_trimmed)
 
-    if trim_only == True:
-        return targets
-
-    if collapse == True:
-        targets.append(f"{output_prefix}/samples.collapse.csv")
-        targets.extend(sample_fastqfiles_collapsed)
-
-    if subsample_amount > 0:
-        targets.append(f"{output_prefix}/samples.collapse.csv")
-        targets.extend(sample_fastqfiles_subsampled)
-
-
-    # Reads per lane of the samples whose lanes were merged
-    targets.extend(lane_counts)
 
     # Always include the final BAM files
     targets.extend(sample_bamfiles_merged)
@@ -203,6 +173,10 @@ def get_pipeline_outputs(wildcards):
     targets.append(f"{output_prefix}/tables/rna_classes.tsv")
     targets.append(f"{output_prefix}/tables/tiers.csv")
     targets.append(f"{output_prefix}/tables/contig_tiers.tsv")
+    targets.append(f"{output_prefix}/tables/order.tsv")
+    targets.append(f"{output_prefix}/tables/schedule.tsv")
+    if passes_file:
+        targets.append(f"{output_prefix}/tables/passes.tsv")
 
     # Add parse_mappings outputs
     targets.append(f"{output_prefix}/{output_prefix}-mappingstats.csv")
@@ -225,7 +199,7 @@ def get_pipeline_outputs(wildcards):
         targets.append(directory(f"{output_prefix}/ribospike"))
 
     targets.extend(sample_bedgraphfiles)
-    targets.extend(expand(f"{output_prefix}/bedgraph_full/{{sample}}.bedgraph", sample=sample_ids))
+    targets.extend(bedgraph_full)
     
 
     # You can append other final targets here as needed.
@@ -247,14 +221,7 @@ def parse_sample_ids(path):
 
     return sample_ids
 
-# If that file doesn't exist yet, it might get generated by an upstream rule.
-# The simplest approach is to do a "best effort" parse or fallback.
-sample_ids = []
-if os.path.exists(samples):
-    sample_ids = parse_sample_ids(samples)
-else:
-    # You could also leave it empty until it is created, or handle it differently.
-    pass
+sample_ids = parse_sample_ids(samples) if os.path.exists(samples) else []   # the sheet may not exist yet
 # Create a global list of expected bam files
 sample_bamfiles_merged = expand(
     f"{output_prefix}/alignments/{{sample}}.merged.bam", 
@@ -281,41 +248,14 @@ sample_fastqfiles_trimmed = expand(
     sample=sample_ids
 )
 
-sample_fastqfiles_collapsed = expand(
-    f"{output_prefix}/collapse/{{sample}}.collapse.fa", 
-    sample=sample_ids
-)
-
 sample_fastqfiles_merged = expand(
     f"{output_prefix}/trimmed/{{sample}}.merged.fq.gz", 
     sample=sample_ids
 )
 
-sample_fastqfiles_subsampled = expand(
-    f"{output_prefix}/subsample/{{sample}}.subsample.fq.gz", 
-    sample=sample_ids
-)
-
-if collapse == True:
-    sample_downstream = f"{output_prefix}/samples.collapse.csv"
-    map_input_fastq = sample_fastqfiles_collapsed
-    collapse_output = sample_fastqfiles_collapsed
-elif collapse == False:
-    if subsample_amount > 0:
-        sample_downstream = f"{output_prefix}/samples.collapse.csv"
-        map_input_fastq = sample_fastqfiles_subsampled
-        collapse_output = sample_fastqfiles_subsampled
-    else:
-        if trim_fastq == True:
-            sample_downstream = f"{output_prefix}/samples.trimmed.csv"
-            if paired_end:
-                map_input_fastq = sample_fastqfiles_merged
-            else:
-                map_input_fastq = sample_fastqfiles_trimmed
-        else:
-            sample_downstream = samples
-            print(f"Need to process fastq files. Exiting.")
-            exit(1)
+# The mapping step reads the trimmed (paired-end: merged) reads
+sample_downstream = f"{output_prefix}/samples.trimmed.csv"
+map_input_fastq = sample_fastqfiles_merged if paired_end else sample_fastqfiles_trimmed
 
 ###############################################################################
 # Rule: all
@@ -329,56 +269,16 @@ rule all:
         get_all_outputs
 
 ###############################################################################
-# Rule: Trim adapters and filter reads (only if trim_fastq=True)
+# Rule: Trim adapters and filter reads
 ###############################################################################
 
-###############################################################################
-# Rule: merge lanes
-###############################################################################
-# config 'lanes': a CSV (sample, read, lane, file) written by the run command for the samples with
-# two or more lane files; the sample sheet then names the merged files by their absolute path.
-# The merged files are temporary: Snakemake deletes them once trimming has read them.
-lane_reads = ["R1", "R2"] if paired_end else ["R1"]
-lane_files = {}                                   # sample -> read -> [(lane, file)]
-if config.get("lanes"):
-    for row in pd.read_csv(config["lanes"], dtype=str).itertuples():
-        lane_files.setdefault(row.sample, {}).setdefault(row.read, []).append((row.lane, row.file))
-merged_fastqs = expand(f"{output_prefix}/input_merged/{{sample}}_{{read}}_001.fastq.gz",
-                       sample=sorted(lane_files), read=lane_reads)
-lane_counts = expand(f"{output_prefix}/logs/lanes/{{sample}}.csv", sample=sorted(lane_files))
-
-rule merge_lanes:
-    input:
-        lambda wc: [path for read in lane_reads for _, path in sorted(lane_files[wc.sample][read])]
-    output:
-        fastq = temp(expand(f"{output_prefix}/input_merged/{{{{sample}}}}_{{read}}_001.fastq.gz", read=lane_reads)),
-        counts = f"{output_prefix}/logs/lanes/{{sample}}.csv",
-    run:
-        with open(output.counts, "w") as table:
-            table.write("read,lane,reads\n")
-            for read, merged in zip(lane_reads, output.fastq):
-                with open(merged, "wb") as out:
-                    for lane, path in sorted(lane_files[wildcards.sample][read]):
-                        with open(path, "rb") as f:
-                            shutil.copyfileobj(f, out)          # concatenated gzip files are one valid gzip file
-                        lines = subprocess.run(f"gzip -dc '{path}' | wc -l", shell=True, check=True,
-                                               capture_output=True, text=True).stdout
-                        table.write(f"{read},{lane},{int(lines) // 4}\n")
-
-
-# This rule is defined conditionally; if trim_fastq==False,
-# Snakemake will never see 'rule trim_reads' in the DAG at all.
 rule trim_reads:
     input:
-        # Our only real "dependency" is the samples CSV, but you could
-        # depend on other results if you wanted.
         samples = samples,
-        merged = merged_fastqs                    # merged lanes (empty without lanes)
     output:
         trimstats = f"{output_prefix}/{output_prefix}-trimstats.csv",
         trimsamples = f"{output_prefix}/samples.trimmed.csv",
         trimmedreads = sample_fastqfiles_merged if paired_end else sample_fastqfiles_trimmed
-        #fastqc = directory(f"{output_prefix}/trimmed/logs/fastqc"),
     threads: threads
     shell:
         """
@@ -392,39 +292,6 @@ rule trim_reads:
 
 
 ###############################################################################
-# Rule: Collapse reads
-###############################################################################
-def construct_command_collapse(input, output_prefix, scriptdir, samples):
-    cmd = [
-        f"{ribomarker_exec}",
-        f"--script collapseReads --",
-        f"--samples {input.samples}",
-        f"--output {output_prefix}",
-        f"--threads {threads}",
-    ]
-
-    if subsample_amount > 0:
-        cmd.append(f"-x {subsample_amount}")
-        if collapse == False:
-            cmd.append(f"--subsampleonly")
-
-    if trim_fastq == False:
-        cmd.append(f"--fastqdir {input_dir}")
-
-    return " \\\n".join(cmd)
-
-rule collapse_reads:
-    input:
-        samples = samples if not trim_fastq else f"{output_prefix}/samples.trimmed.csv"
-    output:
-        logfile = f'{output_prefix}/logs/collapse.log',
-        collapse_samples = f'{output_prefix}/samples.collapse.csv',
-        collapse_reads = collapse_output if collapse == True else sample_fastqfiles_subsampled,
-    threads: threads
-    shell:
-        construct_command_collapse(input, output_prefix, scriptdir, samples)
-
-###############################################################################
 # Rule: Map reads to reference databases
 ###############################################################################
 
@@ -433,9 +300,12 @@ rule map_reads:
         samples = sample_downstream,        
         fastqfiles = map_input_fastq,
         dbs=dbpaths,
+        schedule = f"{output_prefix}/tables/schedule.tsv",
     output:
         logfile=f'{output_prefix}/logs/map.log',
         bamfiles=sample_bamfiles_merged,
+    params:
+        xp = "--xp" if passes_file else "",     # with --passes: XP:i:<pass> on the mapped records
     threads: threads
     shell:
         """
@@ -445,8 +315,7 @@ rule map_reads:
         --threads {threads} \
         --output {output_prefix} \
         --dbs {input.dbs} \
-        --dbs-base {dbdir} \
-        --multimap {multimap} \
+        --schedule {input.schedule} {params.xp}
         """
 
 
@@ -466,7 +335,6 @@ rule bam_to_bedgraph:
         """
         {ribomarker_exec} \
         --script makeBedgraph -- \
-        --step coverage \
         --input {input.bam} \
         --output {output.bedgraph} \
         --featureclasses {input.featureclasses} \
@@ -478,25 +346,49 @@ rule bam_to_bedgraph:
 
 
 ###############################################################################
-# Rule: copy the tier list and the RNA class table into the run folder
+# Rule: the mapping schedule, the order in effect, the tier list and the RNA class table of the run
 ###############################################################################
-# The steps read the copies, so a rerun of a step uses the table the run started with; qcCollect records
+# The steps read these files, so a rerun of a step uses the tables the run started with; qcCollect records
 # the sources (run_config.yaml: rna_classes, tiers) and checksums (prov.class_tables).
 
 rule run_tables:
     input:
-        rna_classes = rna_classes,
-        tiers = dbpaths,
+        dbpaths = dbpaths,
+        order = [tiers_file] if tiers_file else [],
+        passes = [passes_file] if passes_file else [],
     output:
-        rna_classes = f"{output_prefix}/tables/rna_classes.tsv",
         tiers = f"{output_prefix}/tables/tiers.csv",
         contig_tiers = f"{output_prefix}/tables/contig_tiers.tsv",
+        order = f"{output_prefix}/tables/order.tsv",
+        schedule = f"{output_prefix}/tables/schedule.tsv",
     run:
-        shutil.copyfile(input.rna_classes, output.rna_classes)
-        shutil.copyfile(input.tiers, output.tiers)
+        mapSchedule.write_schedule(schedule_rows, output.schedule)
+        mapSchedule.write_order(schedule_rows, output.order, order_names)
+        mapSchedule.write_tiers(schedule_rows, input.dbpaths, species, output.tiers, order_names)   # dbpaths lines in effect
         # which tier each reference sequence belongs to (bowtie-inspect -n): reads on UniVec contigs without a
         # feature become the class UniVec in parseMappings (3g)
-        dbPaths.write_contig_tiers(dbPaths.read_dbpaths(input.tiers, dbdir), species, output.contig_tiers)
+        dbPaths.write_contig_tiers(dbPaths.read_dbpaths(output.tiers, dbdir), species, output.contig_tiers)
+
+
+# The RNA class table of the run: its own rule, because the class table does not affect mapping (map_reads reads
+# tables/schedule.tsv of run_tables; release 0.4.0)
+rule run_classes:
+    input:
+        rna_classes = rna_classes,
+    output:
+        rna_classes = f"{output_prefix}/tables/rna_classes.tsv",
+    run:
+        shutil.copyfile(input.rna_classes, output.rna_classes)
+
+
+# The pass settings as given (only with --passes / passes:; the sources and checksums are in qcCollect's provenance)
+rule run_passes:
+    input:
+        passes = passes_file or [],
+    output:
+        passes = f"{output_prefix}/tables/passes.tsv",
+    run:
+        shutil.copyfile(input.passes, output.passes)
 
 
 ###############################################################################
@@ -521,7 +413,6 @@ rule parse_mappings:
         bedgraph_full=bedgraph_full,
     threads: threads
     params:
-        unmapped_flag = "--unmapped" if dump_unmapped == True else "",
         remove_mm_flag = "--remove-multimap" if remove_multimap else "",
         remove_as_flag = "--remove-antisense" if remove_antisense else "",
         symbols_flag = f"--gene-symbols {gene_symbols}" if gene_symbols else "",
@@ -537,8 +428,6 @@ rule parse_mappings:
         --contig-tiers {input.contig_tiers} \
         {params.symbols_flag} \
         --bampath {output_prefix}/alignments \
-        -q \
-        {params.unmapped_flag} \
         {params.remove_mm_flag} \
         {params.remove_as_flag} \
         """
@@ -567,21 +456,6 @@ rule count_ribospike:
         
        
        
-###############################################################################
-# Rule: Filter counts from multimap and antisense
-###############################################################################
-     
-# filter_counts removed: readcounts.csv is now filtered at source in parseMappings (design Z).
-        
-        
-###############################################################################
-# Rule: Filter bedgraph files
-###############################################################################
-      
-# filter_bedgraph removed: bedgraph is now built from the parsed BAM (CS tags) and already
-# respects remove_multimap/remove_antisense at source (design Z).
-
-
 ###############################################################################
 # Rule: Collapse per-feature counts to a gene-level, mature-exonic matrix
 ###############################################################################
@@ -623,13 +497,14 @@ rule qc_collect:
         resolved.update({"input_dir": input_dir, "dbdir": dbdir, "output_prefix": output_prefix,
                          "species": species, "paired_end": bool(paired_end),
                          "samples": config.get("samples", "samples.csv"),
-                         "collapse": collapse, "subsample_reads": subsample_amount,   # defaults as resolved above
                          "remove_multimap": remove_multimap, "remove_antisense": remove_antisense,
                          "count_ribospike": count_ribospike,
-                         "rna_classes": rna_classes, "tiers": dbpaths,      # sources; copies in tables/
+                         "rna_classes": rna_classes, "tiers": tiers_file or dbpaths,   # sources; tables/
                          "gene_symbols": gene_symbols})
         for key in ("host_input_dir", "host_assets_dir"):   # Docker launcher only: host paths of the user,
             resolved.pop(key, None)                          # not needed by the collector, kept out of qc/
+        for key in removedKeys.REMOVED_KEYS:                 # removed in 0.4.0 (warned about above)
+            resolved.pop(key, None)
         with open(output.run_config, "w") as f:
             yaml.safe_dump(resolved, f, sort_keys=False)
         shell("{ribomarker_exec} --script qcCollect -- --output {output_prefix} --config {output.run_config} "

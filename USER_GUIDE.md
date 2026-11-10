@@ -35,7 +35,7 @@ The pipeline stops there. It applies no normalization and no statistics; the cou
 Scope of this version:
 
 - **Library protocol:** RiboMarker (RealSeq) only. The adapter sequences and the removal of one extra base at the insert's 5′ end are fixed for this protocol (§8).
-- **Species:** human (default) and mouse (`--species mouse`). The references of both are built into the image (§8, *References*); other species with your own references (§5, *Own references*). For mouse, the mouse references were checked on synthetic reads cut from them (every read lands on its own reference), but no result on real mouse data has been compared yet; the QC report of a mouse run says so (§9).
+- **Species:** human (default) and mouse (`--species mouse`). The references of both are built into the image (§8, *References*); other species with your own references (§5.3). For mouse, the mouse references were checked on synthetic reads cut from them (every read lands on its own reference), but no result on real mouse data has been compared yet; the QC report of a mouse run says so (§9).
 - **Systems:** the image is built for x86-64 (Intel/AMD). It has been tested on Windows (two computers; PowerShell and WSL2), on Linux under WSL2, and on macOS on an Intel Mac (§8, *Versions and reproducibility*). Not tested: a native Linux installation, and Apple-silicon Macs (M1 and later), where Docker runs x86-64 images under emulation, which is slower.
 
 ## 2. Installation
@@ -93,7 +93,7 @@ Patient_1,P1_R1.fastq.gz,P1_R2.fastq.gz,Sick,27,F
 | `sample` (required) | The sample's name, used in all results: count tables, coverage and BAM files, QC report. |
 | `fastq_file` (required) | The reads (R1) of the sample. |
 | `fastq_file2` (optional) | The second reads (R2) of a paired-end sample. Filled in for every sample: a paired-end run; empty for every sample (or no column): a single-end run. A mix stops the run. For paired-end reads, R1 and R2 overlap (small-RNA inserts are shorter than the reads) and are merged into one insert sequence. |
-| any other columns | E.g. clinical data. Not used for processing. The sheet is copied unchanged into the results as `sample_sheet.csv`, and **all its columns are shown in the QC report** (section *Samples*): leave out what the report's readers should not see. In the report, *Colour samples by* colours the samples by any of these columns; `report_group` (§5) sets the first choice. |
+| any other columns | E.g. clinical data. Not used for processing. The sheet is copied unchanged into the results as `sample_sheet.csv`, and **all its columns are shown in the QC report** (section *Samples*): leave out what the report's readers should not see. In the report, *Colour samples by* colours the samples by any of these columns; `report_group` (§5.1) sets the first choice. |
 
 The column names are written exactly as above, in any order. The sheet may be comma- or semicolon-separated and must be saved as UTF-8 text (in Excel: *CSV UTF-8*). Spaces around values are ignored, and so are empty rows.
 
@@ -150,33 +150,18 @@ The image accepts only the `run` command; `docker run --rm IMAGE run --help` sho
 |---|---|
 | `--threads N` | CPU cores to use (default: 8; at most the cores available) |
 | `--run-id NAME` | name of the results folder and of the report title (default: `ribomarker`; letters, digits, `_`, `-`, starting with a letter) |
-| `--config FILE` | advanced settings (§5) |
-| `--species NAME` | the reference species: `human` (default) or `mouse` with the built-in references (§9); with `--references`, the species name of your own files (§5, *Own references*) |
-| `--references FOLDER` | your own references instead of the built-in ones (§5, *Own references*) |
-| `--tiers FILE` | a tier list replacing the one of the references (§5, *Tier list and RNA class table*) |
-| `--rna-classes FILE` | an RNA class table replacing the default one (§5, *Tier list and RNA class table*) |
+| `--config FILE` | run settings (§5.1) |
+| `--species NAME` | the reference species: `human` (default) or `mouse` with the built-in references (§9); with `--references`, the species name of your own files (§5.3) |
+| `--references FOLDER` | your own references instead of the built-in ones (§5.3) |
+| `--tiers FILE` | experimental: another order of the references (an order file; §5.2) |
+| `--passes FILE` | experimental: several alignment passes with their own settings (§5.2) |
+| `--rna-classes FILE` | an RNA class table replacing the default one (§5.4) |
 | `--unlock` | remove a lock left by a run that was stopped hard (only if no other run uses `OUTPUT`) |
 | `--demo` | run the demo (§2.4) instead of your data: `run --demo OUTPUT` |
 
 ### 4.4 Checks before the run starts
 
-`run` stops at once, with a message saying what to do, when:
-
-| Problem | What to do |
-|---|---|
-| the sample sheet is not found, not UTF-8 text, or lacks the columns `sample` / `fastq_file` | check the path; save it as *CSV UTF-8*; name the columns as in §3.1 |
-| a row without a sample name or without `fastq_file`; `fastq_file2` filled in for some samples only | complete the sheet |
-| a sample name breaks the rules of §3.2, or is given twice | rename it in the sheet |
-| a FASTQ file is not found in the sheet's folder, is given with a path, has an unusable name, is not `.fastq.gz` / `.fq.gz`, or is listed twice | fix the sheet, or move or rename the file |
-| the `--config` file is not found | check the path |
-| `--config` contains a setting not listed in §5, or a value of the wrong kind | see §5 |
-| `report_group` names a column that is not in the sample sheet | name an existing column |
-| `--threads` is not a whole number of 1 or more | e.g. `--threads 4` |
-| the references are incomplete, or a FASTQ file is damaged (`gzip -t` fails) | rebuild or copy again |
-| not enough free disk space (3 × the FASTQ size + 1 GB) | free space, or use another output folder |
-| without Docker: a folder path contains a space | use a path without spaces |
-
-It warns, and starts, when less than 12 GB of memory is available and when the references have no `MANIFEST_<species>.json`.
+Before anything is computed, `run` checks the sample sheet, the FASTQ files (present and readable as gzip), the settings and the files given with `--config`, `--tiers`, `--passes` and `--rna-classes`, the references and the free disk space. If something is wrong it stops at once with exit status `2`, and its message says what is wrong and how to fix it. Some findings only give a warning and the run starts (for example less than 12 GB of memory, references without a `MANIFEST_<species>.json`, or references an order file leaves out); the warnings are printed before the run starts.
 
 ### 4.5 The end of a run
 
@@ -184,7 +169,7 @@ The run ends with one line:
 
 - `RESULTS VALID: all <n> consistency checks equal …`: no consistency check of the QC report (§7) is `differs` or `not evaluable`;
 - `RESULTS NOT VALID: …`: the pipeline stopped at a step (the line names the log), or a consistency check is `differs` or `not evaluable` (the line names the QC report);
-- `RESULTS NOT CHECKED`: the QC report was switched off (`qc_report: False`, §5); exit status 0.
+- `RESULTS NOT CHECKED`: the QC report was switched off (`qc_report: False`, §5.1); exit status 0.
 
 Exit status: `0` results valid (or not checked); `1` the pipeline failed or the results are not valid; `2` refused before starting; `130` interrupted.
 
@@ -196,22 +181,41 @@ The output of the mapping step may contain `[WARNING] Failed to launch x86-64-v3
 - **Resume** by repeating the same command: finished steps are not redone; `--threads` may differ.
 - A **finished** run is refused, so it is never redone by accident. Use another `--run-id` or another output folder for a new run.
 - If a run was stopped hard (e.g. the computer restarted) and the next attempt says the output folder is locked, add `--unlock`.
-- A run started with version 0.2.x cannot be resumed with version 0.3.0 or later: start it again in an empty folder.
+- A run started with an earlier version cannot be resumed with this version (0.2.x with 0.3.0 or later, 0.3.x with 0.4.0): start it again in an empty folder.
+- A run with `--tiers` or `--passes` is resumed only with the same files: an edited order or passes file is refused.
 
 ## 5. Advanced settings
 
-`--config FILE` takes a YAML file with any of these settings; the defaults are the validated ones.
+Everything in this section is optional: the defaults are the validated settings. Four things can be changed, each with its own option:
+
+| What you change | Option | Section |
+|---|---|---|
+| how reads are counted (multimappers, antisense reads) and what the report shows | `--config FILE` | §5.1 |
+| the order of the references, and alignment passes with other settings (experimental) | `--tiers FILE`, `--passes FILE` | §5.2 |
+| the references themselves | `--references FOLDER` | §5.3 |
+| how the labels of the references become RNA classes | `--rna-classes FILE` | §5.4 |
+
+**The order of the references and the rank of the RNA class table are two different things:**
+
+- The **order of the references** (§5.2) decides **which reference** a read is assigned to. The references are tried one after another; the first one that aligns the read gets it, and the later ones never see it.
+- The **rank** (`rank_in_tier`, §5.4) works **inside that one reference**: when a read overlaps several reference sequences there, or aligns equally well to several of them (a multimapper), the rank decides which one gets the read (for a multimapper after the strand: sense before antisense). A rank never moves a read to another reference.
+
+For example, a read that aligns to a snoRNA in the reference `ncrna_snsno` and also to the genome is assigned to `ncrna_snsno`, because that reference comes first; a read that aligns only to the genome, at a pre-tRNA locus that lies inside the span of a gene, is counted as pre-tRNA (rank 4) and not as pre-mRNA (rank 1). The RNA class table has a column `tier` with the same reference names as the order file, but it only says which reference a label belongs to; it does not set the order.
+
+### 5.1 Run settings
+
+`--config FILE` takes a YAML file with any of these settings:
 
 | Setting | Default | Effect |
 |---|---|---|
 | `remove_multimap` | `True` | Leave out reads that align equally well to several loci (multimappers). With `False`, each multimapper is counted at **one** of its loci, chosen by a deterministic but arbitrary rule (§9), and there is no gene table: the counts are in `*-readcounts.csv`, with multimappers as separate `<feature>_multimap` rows. |
-| `remove_antisense` | `True` | Leave out reads on the strand opposite to their feature. With `False` there is no gene table, as for `remove_multimap`, and the strand-agnostic lookup of §9 matters more (the QC report warns). |
+| `remove_antisense` | `True` | Leave out reads on the strand opposite to their reference sequence. With `False` there is no gene table, as for `remove_multimap`; antisense reads keep their RNA class and are counted in `<feature>_antisense` rows of `*-readcounts.csv` (every class, since 0.4.0), and the strand-agnostic lookup of §9 matters more. Whatever the setting, `*-mappingstats.csv` counts the antisense reads (§6.2). |
 | `multimap` | `100` | The maximum number of alignments reported per read (Bowtie 2 `-k`). |
 | `keep_classes` | `all` | RNA classes written to the coverage files: `all`, or a comma-separated list of class names without spaces (e.g. `miRNA,tRNA`). The old name `keep_types` is still accepted, with a warning. |
 | `count_ribospike` | `True` | Count the RiboSpike spike-in reads (QC report, *Spike-ins*). |
 | `qc_report` | `True` | Write the QC report (§7). With `False`, the run ends with `RESULTS NOT CHECKED`. |
 | `report_group` | none | A column of the sample sheet: the column the QC report first colours the samples by (*Colour samples by* in section *Samples* changes it; up to 8 groups, with more the samples are not coloured). |
-| `tiers`, `rna_classes` | none | The tier list and the RNA class table (§5, *Tier list and RNA class table*). With the starter or Docker, give them as `--tiers` and `--rna-classes`, which mount the files. |
+| `tiers`, `passes`, `rna_classes` | none | The files of §5.2 and §5.4, without Docker only; with the starter or Docker give them as `--tiers`, `--passes` and `--rna-classes`, which mount the files. |
 
 Example:
 
@@ -221,54 +225,165 @@ keep_classes: miRNA,tRNA,piRNA
 report_group: group
 ```
 
-Write `True` / `False` and numbers without quotes (`"False"` in quotes would count as true; `run` refuses it). Other settings (folders, threads, paired- or single-end, trimming) are set by `run` itself and are refused in `--config`.
+Write `True` / `False` and numbers without quotes (`"False"` in quotes would count as true; `run` refuses it). Other settings (folders, threads, paired- or single-end, trimming) are set by `run` itself and are refused in `--config`. The settings `collapse`, `subsample_reads`, `trim_fastq`, `trim_only` and `dump_unmapped` were removed in 0.4.0: with their old default value (`False`, `0`, `True`, `False`, `False`) they are ignored with a warning, any other value stops the run.
 
-### Tier list and RNA class table
+### 5.2 Order of the references and passes (experimental)
 
-Two tables decide how an aligned read becomes an RNA class:
+By default each read is aligned once, through the 14 references in the order of the references folder (§8, step 2), each with its standard settings. Two optional files change this:
 
-- **The tier list** names the references in their mapping order (§8, step 2): `<species>.dbpaths.csv` in the references folder, one line per reference, `aligner,index,retain` (format: *Own references* below).
-- **The RNA class table** turns the labels of the reference BED (its fifth column, e.g. Ensembl's biotype) into RNA classes: `<species>.rna_classes.tsv`, tab-separated, one row per label (a label found in several references may have one row per reference; in this version these rows must agree on class and rank, since a read's class does not depend on its reference). Its columns:
-
-| Column | Content |
+| You want | Give |
 |---|---|
-| `source_label` | the label in the BED, or a label the pipeline sets itself (`unannotated`, `unmapped`, the spike-ins, …) |
-| `tier` | the reference the label comes from (the index name without the species, e.g. `ncrna`), or `*` for all; tiers that the tier list does not have are named in a warning |
-| `class_id` | the RNA class written into the result tables (no spaces) |
-| `display_name` | the class's name in the QC report |
-| `group` | its group in the report's tier and composition plots |
-| `display_order` | the order of the classes in the report |
-| `rank_in_tier` | which of overlapping features of one reference a read gets (higher wins) |
-| `positions` | `yes`: reads are split by their place in the feature (`_5p`, `_3p`, `_internal`, `_whole`; §8, step 3) |
-| `gene_table` | `yes`: in the gene table; `drop`: precursor or gene-span classes, left out; `exclude`: not a gene (spike-ins, vector contaminants, unannotated, unmapped) |
-| `counts_as_rrna` | `yes`: left out of the "without rRNA" numbers of the QC report |
-| `description` | one line for the report |
-
-The built-in tables are in [`docker/tables/`](docker/tables/). Every run copies the two tables it used into `tables/` of its results folder (`rna_classes.tsv`, `tiers.csv`), and the QC report shows them (section *Tiers and RNA classes*; files and checksums under *Provenance*). To change them, start from these copies and give the changed file with `--tiers FILE` or `--rna-classes FILE`:
+| another order of the references | `--tiers FILE` (an *order file*) |
+| several alignment passes, each with its own settings | `--passes FILE` (a *passes file*) |
+| both | both |
 
 ```bash
-./ribomarker ~/data/fastq/samples.csv ~/data/results --rna-classes my_classes.tsv
+./ribomarker samples.csv results --tiers order.tsv                      # another order, one pass
+./ribomarker samples.csv results --passes passes.tsv                    # the default order, several passes
+./ribomarker samples.csv results --tiers order.tsv --passes passes.tsv  # both
 ```
 
-Which class table is used (the first found): `--rna-classes` (or the setting `rna_classes`); a `<species>.rna_classes.tsv` in the references folder; the built-in table of the species; `docker/tables/default.rna_classes.tsv`. A table replaces the built-in one as a whole; rows for the labels the pipeline sets itself are added from the built-in table when missing. BED labels missing from the table become a class of the same name, with rank 10 (the highest built-in rank), the group "lncRNA and other ncRNA", the gene table, and a warning. The paths of a replaced tier list are read relative to the references folder.
+Both are experimental: only the default settings are validated against known results (§9). Runs with either file are marked *Non-default settings (experimental)* at the top of the QC report (§7). A run with them is resumed only with the same files (§4.6).
 
-Changing the tier order or the ranks changes which reads are assigned to which feature. The pipeline has been tested with the built-in tables only; check the QC report of the first runs with your own.
+#### The order file
 
-### Own references
+A text file with the header `tier` and then one reference name per line, in the order to use. Every run writes the order it used to `tables/order.tsv` of its results folder; copy that file and change it. The default order (human and mouse):
+
+```
+tier
+univec_bt1
+ribospike
+rrna_bt1
+trnas
+mirna
+star
+pre
+pirna
+ncrna_mt
+ncrna_snsno
+ncrna_other
+ncrna_lnc
+cdna
+genome
+```
+
+For example, to align snRNA, snoRNA and scaRNA before piRNA, as in the method paper, move `ncrna_snsno` above `pirna` and `ncrna_mt` below it:
+
+```
+tier
+univec_bt1
+ribospike
+rrna_bt1
+trnas
+mirna
+star
+pre
+ncrna_snsno
+pirna
+ncrna_mt
+ncrna_other
+ncrna_lnc
+cdna
+genome
+```
+
+Rules:
+
+- The names are the reference names of §8, step 2 (with your own references: the index name without the species, §5.3), each at most once.
+- UniVec (`univec_bt1`) and the spike-ins (`ribospike`) come first, the genome last.
+- A reference left out is not used (a warning). The spike-ins cannot be left out while the spike-in count is on (`count_ribospike`, §5.1).
+- A tier list of version 0.3.0 (`aligner,index,retain`) is refused: write an order file.
+
+#### The passes file
+
+A pass is one walk through the references, in the order in effect, for the reads that are still unaligned; a read assigned in one pass is not aligned again. A passes file says which settings each reference gets in each pass. It is tab-separated, with a header line of six columns in this order, then one row per rule:
+
+| Column | Values |
+|---|---|
+| `pass` | 1, 2, …: consecutive from 1 |
+| `applies_to` | reference names separated by commas, or one group: `all`, `bowtie1`, `bowtie2` (the references of that aligner) or `other` (the references of that pass that no other row names). A group stands alone, not mixed with names. A reference is matched by at most one row per pass; a reference that no row of a pass matches is skipped in that pass. The spike-ins cannot be named |
+| `max_mismatches` | `standard` (the default settings), or 0, 1, 2. Bowtie 1 references: at most this many mismatches over the whole read. Bowtie 2 references: a score budget of that many mismatches, in which a position on an N (in the read, or a read running onto the N padding at the end of a reference sequence) can take the place of a mismatch, and `2` also allows one gap of 1–2 bases; `0` is exact |
+| `min_length`, `max_length` | read lengths in nt (at least 15; `max_length` at least `min_length`); other reads skip that reference in that pass and go on to the next one; reads that skip the last reference of the last pass are unmapped |
+| `n_overhang` | only with `max_mismatches` 0, and for Bowtie 2 references only (ignored for Bowtie 1): at most 1 or 2 positions on an N and no mismatch; or `standard` |
+
+Empty cells may be left empty or written `-` (= `standard`, no length limit). The order of the rows does not matter. Example: first exact alignments (at most one position on an N), then the default settings for the reads still unaligned:
+
+```
+pass	applies_to	max_mismatches	min_length	max_length	n_overhang
+1	all	0	-	-	1
+2	all	standard	-	-	standard
+```
+
+The spike-ins always run once, in pass 1, with their own settings. A budget is a limit, not a promise: Bowtie 2 finds an alignment through exact 20-nt pieces of the read (seeds), so a short read whose every 20-nt piece holds a mismatch or a gap may stay unaligned although it is within the budget (e.g. a 30-nt read with a gap in its middle is not aligned even with the standard settings). `run` warns when UniVec has no row in pass 1 (vector reads are then not removed first), when a reference runs in no pass, and when `max_mismatches` allows more than the standard settings (Bowtie 1: `2`; Bowtie 2: `2` when the row's `min_length` is under 19 nt, or not set).
+
+#### The schedule
+
+Before the run starts, `run` prints the *mapping schedule*: the references down, the passes across. Check it there. For the example passes file above:
+
+```
+Mapping schedule: 14 references, 2 passes; order: default (references folder); pass settings: passes file passes.tsv
+  step  reference     aligner  pass 1               pass 2
+     1  univec_bt1    bowtie   0 mismatches         standard
+     2  ribospike     bowtie2  spike-in settings    -
+     3  rrna_bt1      bowtie   0 mismatches         standard
+     4  trnas         bowtie2  0 mismatches, <=1 N  standard
+     5  mirna         bowtie2  0 mismatches, <=1 N  standard
+     ...
+    13  cdna          bowtie2  0 mismatches, <=1 N  standard
+    14  genome        bowtie2  0 mismatches, <=1 N  standard, keeps unaligned
+```
+
+Each run saves the order (`tables/order.tsv`), the pass settings (`tables/passes.tsv`) and the schedule with the exact aligner options of every reference and pass (`tables/schedule.tsv`). With a passes file the BAM records carry the pass that aligned them (`XP` tag), and `qc/metrics_long.tsv` has the reads per reference and pass in place of `map.<index>.reads_in` and `.unaligned`: `map.p<pass>.<index>.arrived`, `.aligned`, `.unaligned`, `.skipped_window`, where `<index>` is the index name with the species (e.g. `map.p1.human-mirna.arrived`); the report's tier section shows the sums over the passes.
+
+### 5.3 Own references
 
 `--references FOLDER` replaces the built-in references with a folder of your own, e.g. with another miRNA or piRNA database or an extra spike-in. The starter mounts the folder read-only. The file names carry the species name given with `--species`: letters, digits, `_` and `-`, e.g. `--species rat` with `rat.dbpaths.csv` and `rat.bed`. For a species other than human and mouse, `run` warns and the QC report skips two species-specific items: the check that the BED holds no contigs named for another species (marked *not applicable*) and the red-blood-cell miRNA ratio. The folder holds:
 
 | File | Content |
 |---|---|
-| `<species>.dbpaths.csv` | The references (tiers), one per line, **in priority order** (§8): `aligner,index,retain`, e.g. `bowtie2,mirna/human-mirna,T`. `aligner`: `bowtie2` (up to `multimap` alignments per read), `bowtie` (Bowtie 1, one alignment) or `ribospikebt2` (the spike-in settings), as in the built-in file. `index`: the index prefix, relative to the folder. `retain`: `T` keeps and counts the reads that align there; `F` removes them without counting. |
+| `<species>.dbpaths.csv` | The references, one per line, **in their default order** (§5.2): `aligner,index,T`, e.g. `bowtie2,mirna/human-mirna,T`. See below. |
 | Bowtie / Bowtie 2 indexes | One per line of the dbpaths file (`bowtie-build` or `bowtie2-build` on a FASTA file). |
-| `<species>.bed` | The reference sequences: tab-separated, no header, six columns: sequence name (as in the index), start, end, name, label, strand. The RNA class table turns the label into an RNA class and decides which of overlapping sequences a read gets (§8, step 3); labels missing from the table get a warning and rank 10 (above *Tier list and RNA class table*). |
-| `<species>.rna_classes.tsv` | Optional: the RNA class table for these references (above). Without it, the built-in table of the species is used, or the default table for other species. |
+| `<species>.bed` | The reference sequences: tab-separated, no header, six columns: sequence name (as in the index), start, end, name, label, strand. The RNA class table turns the label into an RNA class and a rank (§5.4); labels missing from the table get a warning and rank 10. |
+| `<species>.rna_classes.tsv` | Optional: the RNA class table for these references (§5.4). Without it, the built-in table of the species is used, or the default table for other species. |
 | `MANIFEST_<species>.json` | Optional. Without it, `run` warns that the QC report cannot identify the references. |
+
+The three columns of `<species>.dbpaths.csv`:
+
+- `aligner`: `bowtie2` (Bowtie 2, up to `multimap` alignments per read), `bowtie` (Bowtie 1, one alignment) or `ribospikebt2` (the spike-in settings), as in the built-in file. References with the aligner `ribospikebt2`, `ribospike` or `mind` are spike-ins: in an order file they come first, with UniVec; they run in pass 1 only and cannot be named in a passes file. Further forms (`bowtie1`, `mind`, `ribospike`, `bowtie2best`, `bowtie2sense`) exist for own references but are used by no built-in reference; an unknown aligner is refused.
+- `index`: the index prefix, relative to the folder. The index name without the species is the reference name used in order and passes files and in the RNA class table (e.g. `mirna` for `mirna/human-mirna`).
+- The third column must be `T` (every reference is kept and counted); `F`, which removed reads without counting them before 0.4.0, is refused.
 
 `run` checks before the start that every index and the BED file exist. Where to start: a copy of the built-in references (§10, step 3), or the small demo references in the image (`/pipeline/demo/references`), changed one reference at a time; to rebuild references from their original sources, see [`buildDB/`](buildDB/README.md).
 
 Caveats: the pipeline has been tested only with the built-in and the demo references. The gene table (`*-genecounts.csv`) and the QC report follow the RNA class table (§8, step 5): give your own labels rows in it, and check the report of the first runs with your own references.
+
+### 5.4 RNA class table
+
+The RNA class table turns the labels of the reference BED (its fifth column, e.g. Ensembl's biotype) into RNA classes, and gives each label the rank that decides between overlapping reference sequences of one reference (see the start of §5). It is a tab-separated file, `<species>.rna_classes.tsv`, with one row per label; a label found in several references may have one row per reference (in this version these rows must agree on class and rank, since a read's class does not depend on its reference). Its columns:
+
+| Column | Content |
+|---|---|
+| `source_label` | the label in the BED, or a label the pipeline sets itself (`unannotated`, `unmapped`, the spike-ins, …) |
+| `tier` | the reference the label comes from (its reference name, e.g. `ncrna_snsno`), or `*` for all. It does not set the order of the references (§5.2). References the run does not use are named in a warning (e.g. the old name `ncrna` of 0.3.0, or a reference an order file leaves out) |
+| `class_id` | the RNA class written into the result tables (no spaces) |
+| `display_name` | the class's name in the QC report |
+| `group` | its group in the report's tier and composition plots |
+| `display_order` | the order of the classes in the report |
+| `rank_in_tier` | which of overlapping reference sequences of one reference a read gets, and at which of its equally good loci a multimapper is counted (after the strand: sense before antisense): the higher rank wins. In the built-in tables structural and small RNAs rank high and protein_coding and pre-mRNA lowest |
+| `positions` | `yes`: reads are split by their place in the reference sequence (`_5p`, `_3p`, `_internal`, `_whole`; §8, step 3) |
+| `gene_table` | `yes`: in the gene table; `drop`: precursor or gene-span classes, left out; `exclude`: not a gene (spike-ins, vector contaminants, unannotated, unmapped) |
+| `counts_as_rrna` | `yes`: left out of the "without rRNA" numbers of the QC report |
+| `description` | one line for the report |
+
+The built-in tables are in [`docker/tables/`](docker/tables/). Every run copies the class table it used into `tables/rna_classes.tsv` of its results folder, and the QC report shows it (section *Tiers and RNA classes*; file and checksum under *Provenance*). To change it, start from this copy and give the changed file with `--rna-classes FILE`:
+
+```bash
+./ribomarker ~/data/fastq/samples.csv ~/data/results --rna-classes my_classes.tsv
+```
+
+Which class table is used (the first found): `--rna-classes` (or the setting `rna_classes`); a `<species>.rna_classes.tsv` in the references folder; the built-in table of the species; `docker/tables/default.rna_classes.tsv`. A table replaces the built-in one as a whole; rows for the labels the pipeline sets itself are added from the built-in table when missing. BED labels missing from the table become a class of the same name, with rank 10 (the highest built-in rank), the group "lncRNA and other ncRNA", the gene table, and a warning. Since 0.4.0 the table has no row `antisense` (antisense reads keep their class); a table copied from 0.3.0 that still has it gets a warning, and the row is not used.
+
+Changing the ranks changes which reads are assigned to which reference sequence. The pipeline has been tested with the built-in tables only; check the QC report of the first runs with your own.
 
 ## 6. Outputs
 
@@ -280,7 +395,7 @@ All results are in `OUTPUT/<run id>/` (default `OUTPUT/ribomarker/`); the tables
 |---|---|
 | `*-genecounts.csv` | **The gene table: counts per feature** (features × samples; column `gene`): one row per gene, miRNA arm, tRNA family, …, from mature-exonic reads (§8, step 5). Unique and sense reads only (with the default settings). Not written when `remove_multimap` or `remove_antisense` is `False`. |
 | `*-genelengths.csv` | The length (`length_nt`), RNA class (`rna_class`) and gene symbols (below) of every feature of the gene table. |
-| `*-readcounts.csv` | Counts per reference sequence (column `feature`), before the collapse into the gene table. tRNA, snRNA and snoRNA sequences have one row per position (`_5p`, `_3p`, `_internal`, `_whole`). |
+| `*-readcounts.csv` | Counts per reference sequence (column `feature`), before the collapse into the gene table. tRNA, snRNA and snoRNA sequences have one row per position (`_5p`, `_3p`, `_internal`, `_whole`). With `remove_multimap` or `remove_antisense` `False`, multimappers and antisense reads have rows of their own (`_multimap`, `_antisense`). |
 | `*-featureclasses.csv` | The RNA class (`rna_class`), length (`length_nt`) and gene symbols (below) of every reference sequence of `*-readcounts.csv`. |
 | `*-featuredistinctseqs.csv` | The number of distinct read sequences per reference sequence. |
 | `*-classcounts.csv` | Counts per RNA class (`rna_class`), including the spike-ins, vector contaminants (`UniVec`), `genome_unannotated` and `unmapped`. |
@@ -288,10 +403,10 @@ All results are in `OUTPUT/<run id>/` (default `OUTPUT/ribomarker/`); the tables
 | `*-classdistinctseqs.csv` | The number of distinct read sequences per RNA class. |
 | `bedgraph/<sample>.bedgraph` | Per-sequence coverage consistent with the counts (the same reads; each multimapper at its one assigned locus). Columns: `feature start end depth rna_class`. |
 | `bedgraph_full/<sample>.bedgraph` | Coverage from every equally best locus of every read, with `multimap_depth` (how much of the depth comes from multimappers) and `strand`. Columns: `feature start end depth multimap_depth strand rna_class`. |
-| `<sample>.bam` | The assigned alignments; the assigned reference sequence is in the `CS` tag. |
-| `tables/` | The tier list (`tiers.csv`) and the RNA class table (`rna_classes.tsv`) the run used (§5). |
+| `alignments/<sample>.bam` | The assigned alignments; the assigned reference sequence is in the `CS` tag. |
+| `tables/` | What the run used (§5.2, §5.4): the order of the references (`order.tsv`, an order file), their lines of `dbpaths.csv` in that order (`tiers.csv`), the mapping schedule (`schedule.tsv`: one row per reference and pass, with the aligner options), which tier each reference sequence belongs to (`contig_tiers.tsv`), the RNA class table (`rna_classes.tsv`) and, with `--passes`, the passes file (`passes.tsv`). |
 
-**Gene symbols.** `*-featureclasses.csv` and `*-genelengths.csv` have the columns `hgnc_id` and `hgnc_symbol` (human) or `mgi_id` and `mgi_symbol` (mouse), and `mirbase_name` (the miRBase name of a miRNA arm, star arm or precursor, e.g. `hsa-miR-21-5p`). They come from `docker/tables/<species>.gene_symbols.tsv` (sources, versions and checksums in its `.provenance.md`), joined by Ensembl gene id (no second try by gene name, so a symbol is never taken from another gene of the same name); pre-mRNA through the gene names of the Ensembl GTF, miRNA arms and precursors through MirGeneDB's miRBase accessions, tRNAs through GtRNAdb ids. A feature that spans several genes (e.g. a tRNA family) lists them separated by `;`; in `*-genelengths.csv` a feature gets the first non-empty value of its reference sequences. How many have a value (built-in references): human protein_coding and pre-mRNA 97 %, snRNA > 99 %, miRNA arms and precursors 98 % (miRBase names: 96 % of the arms, 85 % of the star arms), tRNA 98 %, snoRNA 51 %, lncRNA 19 % (most human lncRNAs have no approved symbol); mouse protein_coding and pre-mRNA > 99 %, lncRNA 98 %, miRNA and tRNA none (MGI has no miRBase or GtRNAdb cross-references; the miRBase names are filled in, 98–100 %). piRNA, the rRNA copies of miRTrace, spike-ins and vector contaminants have no symbol. With your own references (§5) the columns stay empty, and the run warns, unless the table was built for your BED (`buildDB/make_gene_symbols.py`).
+**Gene symbols.** `*-featureclasses.csv` and `*-genelengths.csv` have the columns `hgnc_id` and `hgnc_symbol` (human) or `mgi_id` and `mgi_symbol` (mouse), and `mirbase_name` (the miRBase name of a miRNA arm, star arm or precursor, e.g. `hsa-miR-21-5p`). They come from `docker/tables/<species>.gene_symbols.tsv` (sources, versions and checksums in its `.provenance.md`), joined by Ensembl gene id (no second try by gene name, so a symbol is never taken from another gene of the same name); pre-mRNA through the gene names of the Ensembl GTF, miRNA arms and precursors through MirGeneDB's miRBase accessions, tRNAs through GtRNAdb ids. A feature that spans several genes (e.g. a tRNA family) lists them separated by `;`; in `*-genelengths.csv` a feature gets the first non-empty value of its reference sequences. How many have a value (built-in references): human protein_coding and pre-mRNA 97 %, snRNA > 99 %, miRNA arms and precursors 98 % (miRBase names: 96 % of the arms, 85 % of the star arms), tRNA 98 %, snoRNA 51 %, lncRNA 19 % (most human lncRNAs have no approved symbol); mouse protein_coding and pre-mRNA > 99 %, lncRNA 98 %, miRNA and tRNA none (MGI has no miRBase or GtRNAdb cross-references; the miRBase names are filled in, 98–100 %). piRNA, the rRNA copies of miRTrace, spike-ins and vector contaminants have no symbol. With your own references (§5.3) the columns stay empty, and the run warns, unless the table was built for your BED (`buildDB/make_gene_symbols.py`).
 
 **Joining the tables.** The count tables hold counts only; the annotations are in separate tables with the same first column. Join `*-genecounts.csv` with `*-genelengths.csv` on `gene`, and `*-readcounts.csv` with `*-featureclasses.csv` on `feature`, e.g. in R `merge(counts, lengths, by = "gene")`, or in Python `counts.merge(lengths, on="gene")` (pandas).
 
@@ -299,14 +414,15 @@ All results are in `OUTPUT/<run id>/` (default `OUTPUT/ribomarker/`); the tables
 
 | File | Content |
 |---|---|
-| `*-mappingstats.csv` | Mapped, unmapped, unique and multimapping reads per sample |
+| `*-mappingstats.csv` | Per sample: `Mapped`, `Unmapped`, `Unique`, `Multi` (multimappers), `Antisense` (unique reads on the opposite strand of their feature), `AntisenseMulti` (multimappers whose assigned locus is antisense; since 0.4.0), `Total`. The antisense columns count the reads whatever `remove_antisense` says. |
 | `*-trimstats.csv` | Trimming statistics per sample (adapter dimers, trimmed reads, merged pairs) |
 | `ribospike/` | Spike-in counts by length and RNA Type (`*-spikelengths.csv`) and the origin of every read: natural, spike-in or unmapped (`*-readorigin.csv`) |
 | `trimmed/logs/` | cutadapt and (paired-end) fastp reports |
+| `alignments/` | The merged alignments of each sample (`<sample>.merged.bam`: every reported alignment of every reference and pass, with the unmapped reads), the assigned alignments (`<sample>.bam`, §6.1), the aligners' logs per reference and pass (`alignments/logs/<sample>.p<pass>.<index>.log`) and, per sample, which references ran in each pass and how many reads a length window let skip (`alignments/logs/<sample>.cells.tsv`). The alignments per reference and pass are merged and then deleted. |
 | `sample_sheet.csv` | Your sample sheet, unchanged (with any extra columns) |
 | `samples.csv`, `run_config.yaml` | What the pipeline was given: its own sample list and the settings |
 | `run.log` | The full log of the run |
-| `run_status.json` | Verdict, start and end times, pipeline version, code fingerprint and git commit, the tier list and RNA class table used (`tables`); in Docker also the memory peak |
+| `run_status.json` | Verdict, start and end times, pipeline version, code fingerprint and git commit, the order, pass settings and RNA class table used (`tables`); in Docker also the memory peak |
 
 The output folder also holds `.snakemake/`, the bookkeeping of the workflow manager (Snakemake), which is needed to resume a run.
 
@@ -327,21 +443,21 @@ Every metric (name, definition, unit, denominator, caveats) is defined in [`dock
 
 The report describes; it does not judge. **No quality thresholds are applied:** no value is marked pass or fail, and every percentage names its denominator (e.g. "% of merged reads"). Sections, top to bottom:
 
-1. **Samples:** the columns of the sample sheet (the FASTQ file names are hidden at first; *Configure columns* shows them), and *Colour samples by*. Its first line gives the result of the consistency checks and the number of warnings.
+1. **Samples:** the columns of the sample sheet (the FASTQ file names are hidden at first; *Configure columns* shows them), and *Colour samples by*. Its first line gives the result of the consistency checks and the number of warnings; for a run with `--tiers` or `--passes` it starts with *Non-default settings (experimental)* and names them.
 2. **How to read this report:** the settings above the plots, the toolbox, and a glossary.
 3. **General Statistics:** one row per sample with the headline numbers, including the mean read length of the natural reads; below the heading, the checks that are not `equal` and the warnings (only if there are any).
 4. **Trimming and merging: read fate:** where the input reads (pairs) went: adapter dimers, inserts of 1–14 nt, removed by fastp filters and not merged (both paired-end only), into mapping. The categories add up to the input.
-5. **Mapping per reference tier:** reads assigned in each mapping tier (§8), before multimappers and antisense reads are removed. The genome tier is split into the unannotated reads and the rest (pre-mRNA, pre-tRNA).
+5. **Mapping per reference tier:** reads assigned in each mapping tier (§8), before multimappers and antisense reads are removed; with `--passes`, summed over the passes. The genome tier is split into the unannotated reads and the rest (pre-mRNA, pre-tRNA).
 6. **Composition by RNA class:** kept reads per RNA class after that removal, grouped as in the RNA class table; further tabs without spike-ins, and without rRNA and spike-ins.
-7. **Multimappers and antisense reads:** the mapped reads split into kept reads, reads removed as multimappers and reads removed as antisense (the last is derived, not counted directly); below it, per tier, the share of reads with a second alignment.
+7. **Multimappers and antisense reads:** the mapped reads split into kept reads, reads removed as multimappers and reads removed as antisense (with `remove_multimap` on, antisense multimappers count as multimappers), counted from `*-mappingstats.csv`; below it, per tier, the share of reads with a second alignment.
 8. **Read length by RNA class**, in two modes (setting *Values*): **% of natural reads**, the reads of a class at a length as a share of all natural reads of the sample (all classes and lengths together add up to 100 %), and **% within class**, the length distribution of each class on its own. Natural reads are the kept reads without spike-ins and vector contaminants. The method paper shows such sequencing length profiles without stating their denominator (Clark et al. 2026); here it is the natural reads, counted after multimappers and antisense reads are removed (the default settings). One button per main class; the other classes are together under "Other RNAs" (the description lists them).
 9. **Spike-ins:** share of reads, fragments, length fidelity, end-base composition of exact-length reads (with its chance level), length offset and recovery per designed length. Without the amounts added, recovery can only be compared between samples and lengths.
 10. **Detection and counts:** library size (with and without rRNA), features detected with more than 0, 5 and 10 reads (with a plot per RNA class), the ratio of two red-blood-cell-enriched miRNAs (miR-451a / miR-23a-3p; descriptive, not comparable to qPCR cut-offs without calibration), and the 20 most abundant features per sample, overall and per RNA class.
-11. **Tiers and RNA classes:** the tier list and the RNA class table of the run (§5).
+11. **Tiers and RNA classes:** the order of the references (`tiers.csv`), the mapping schedule (references down, passes across) and the RNA class table of the run (§5.2, §5.4).
 
 These are followed by MultiQC's own fastp (paired-end) and cutadapt sections, **Provenance** (run, library parameters, reference species check, reference build, the tables, settings, and how to cite the pipeline and the method) and **Software versions** (the pipeline version and every tool version).
 
-*Colour samples by*, above the sample table, colours the samples by the values of a sample-sheet column in every plot and table (at most 8 groups; `report_group`, §5, sets the first choice); a click on a colour in the key next to it changes that colour. The choice and the colours are not kept when the report is opened again, and it replaces colours set by hand in the toolbox's *Highlight* tab. Plots with one line per sample have no legend in MultiQC's own sections: hover over a line to see its sample, or use the toolbox on the right (*Highlight samples*, *Show / hide samples*).
+*Colour samples by*, above the sample table, colours the samples by the values of a sample-sheet column in every plot and table (at most 8 groups; `report_group`, §5.1, sets the first choice); a click on a colour in the key next to it changes that colour. The choice and the colours are not kept when the report is opened again, and it replaces colours set by hand in the toolbox's *Highlight* tab. Plots with one line per sample have no legend in MultiQC's own sections: hover over a line to see its sample, or use the toolbox on the right (*Highlight samples*, *Show / hide samples*).
 
 Two kinds of marks need attention:
 
@@ -358,9 +474,9 @@ The workflow is run by Snakemake; each step is a Python script in `docker/script
 
 1. **Trimming.** cutadapt removes the 3′ adapter (`TGGAATTCTCGGGTGCCAAGG`; R2: `TGATCGTCGGACT`) and the one extra base that the library protocol adds at the insert's 5′ end, and drops inserts shorter than 15 nt (reported as adapter dimers and short inserts). For paired-end reads, fastp then merges R1 and R2 into one insert (overlap of at least 10 nt, at most 2 differences) and filters reads with its default criteria (low quality, too many N); pairs that cannot be merged are not used. No base-quality trimming is done.
 2. **Tiered mapping.** Reads are aligned to a stack of references **in a fixed order**, and each read is assigned to the *first* reference it aligns to:
-   `UniVec → RiboSpike → rRNA → tRNA → miRNA → miRNA star → miRNA precursor → piRNA → ncRNA → cDNA → genome`.
-   Contaminants, spike-ins and rRNA are claimed first; reads that do not align go on to the next reference. The order is the tier list (§5). The miRNA star arms are a reference of their own but are counted as the class miRNA. UniVec and rRNA are aligned with Bowtie 1, reporting one alignment; the other tiers with Bowtie 2 (up to `multimap` alignments per read).
-3. **Assignment.** For each read the pipeline resolves, in order: (a) the reference (the tier order above); (b) the overlapping reference sequence, by the rank of its label (`rank_in_tier` of the class table), in which structural RNAs outrank others and protein_coding ranks lowest; (c) the locus of a multimapper, by a deterministic tie-break. Multimappers and antisense reads are then removed (§5). Reads of classes with `positions` (tRNA, snRNA, snoRNA) are split by their place in the sequence: `_5p` or `_3p` when the read lies within 10 nt of that end only, `_whole` when it lies within 10 nt of both ends, `_internal` otherwise; the 5′ end is on the sequence's strand. Except for `_whole`, this follows the method paper (Clark et al. 2026, Methods).
+   `UniVec → RiboSpike → rRNA → tRNA → miRNA → miRNA star → miRNA precursor → piRNA → ncRNA (mitochondrial) → ncRNA (snRNA, snoRNA, scaRNA) → ncRNA (other) → lncRNA → cDNA → genome`.
+   Contaminants, spike-ins and rRNA are claimed first; reads that do not align go on to the next reference. The reference names (used in order and passes files, and shown in `tables/order.tsv`) are `univec_bt1`, `ribospike`, `rrna_bt1`, `trnas`, `mirna`, `star`, `pre`, `pirna`, `ncrna_mt`, `ncrna_snsno`, `ncrna_other`, `ncrna_lnc`, `cdna`, `genome`. Since 0.4.0 the Ensembl ncRNA reference is four references (Mt_tRNA and Mt_rRNA; snRNA, snoRNA and scaRNA; misc_RNA and nuclear rRNA; lncRNA), so a read that aligns to two of them is assigned to the first instead of being a multimapper. The order is that of `<species>.dbpaths.csv`, or of an order file (§5.2); with a passes file the reads go through the references once per pass. The miRNA star arms are a reference of their own but are counted as the class miRNA. UniVec and rRNA are aligned with Bowtie 1, reporting one alignment; the other tiers with Bowtie 2 (up to `multimap` alignments per read).
+3. **Assignment.** For each read the pipeline resolves, in order: (a) the reference (the tier order above); within it, the best-scoring alignments: a read with one best alignment is unique, a read with several is a multimapper; (b) the overlapping reference sequence, by the rank of its label (`rank_in_tier` of the class table), in which structural RNAs outrank others and protein_coding ranks lowest; a read overlaps a sequence when at least 2 of its bases lie in it; (c) the locus of a multimapper, by a deterministic tie-break: sense before antisense before no sequence, then the higher rank, then the position. A read is antisense when its (assigned) alignment lies on the opposite strand of its sequence; a read on the genome without a sequence is not antisense. Multimappers and antisense reads are then removed (§5.1); with `remove_antisense: False` an antisense read keeps its class. Reads of classes with `positions` (tRNA, snRNA, snoRNA) are split by their place in the sequence: `_5p` or `_3p` when the read lies within 10 nt of that end only, `_whole` when it lies within 10 nt of both ends, `_internal` otherwise; the 5′ end is on the sequence's strand. Except for `_whole`, this follows the method paper (Clark et al. 2026, Methods).
 4. **Counts.** Reads are counted per reference sequence (`*-readcounts.csv`) and per RNA class (`*-classcounts.csv`).
 5. **The gene table.** The counts per reference sequence are collapsed into a mature-exonic table of features (`*-genecounts.csv`): classes with `gene_table` `drop` (pre-miRNA, pre-mRNA, pre-tRNA) are left out, those with `exclude` (spike-ins, vector contaminants, unannotated, unmapped) are not genes, the position rows of tRNA, snRNA and snoRNA are summed per sequence, while near-identical rRNA copies and miRNA arms are kept separate.
 6. **Coverage.** Per-sequence coverage is written from the assigned alignments (`bedgraph/`) and from all equally best alignments (`bedgraph_full/`), see §6.1.
@@ -378,17 +494,19 @@ The pipeline version is in [`docker/VERSION`](docker/VERSION); the git tag `v<ve
 
 Read these before interpreting results.
 
-- **RNA class depends on the tier order.** A read is assigned to the first reference it aligns to (§8), so the boundaries between RNA classes (e.g. piRNA, lncRNA, protein_coding) partly reflect the order of the references, not only biology.
+- **RNA class depends on the tier order.** A read is assigned to the first reference it aligns to (§8), so the boundaries between RNA classes (e.g. piRNA, lncRNA, protein_coding) partly reflect the order of the references, not only biology. The best alignment wins only within a reference: an earlier reference can win with a worse alignment than a later one (since the ncRNA split of 0.4.0 also between the four ncRNA references).
+- **Order and passes are experimental.** Other orders (`--tiers`) and passes (`--passes`) are checked for consistency (the reads add up, every read is assigned once), but only the default settings are validated against known results; the QC report marks such runs.
 - **Chance alignment of short reads.** Reads of 15–17 nt can align by chance to the large ncRNA and cDNA references before they reach the genome tier, and are then counted as lncRNA or protein_coding. Under a uniform-random model, a 15-nt read has about an 11 % chance of an exact match somewhere in the 62.5 Mb cDNA reference, and nearly 100 % if one mismatch is allowed; at 20 nt about 0.01 % and 0.7 %. These are model estimates, not measurements. `qc/metrics_long.tsv` has the number of 15–17 nt reads per RNA class (`assign.class.<class>.floor_reads`).
 - **Strand-agnostic feature lookup in the genome tier.** Features of reads assigned in the genome tier are looked up without regard to strand, which affects the sense/antisense labels and counts of pre-mRNA and pre-tRNA features.
 - **Equal-rank overlapping features.** When a read overlaps two features of the same rank, the feature listed first in the reference BED file wins (from version 0.2.0). The rule is technical, not biological: because the feature lookup in the genome tier ignores the strand (item above), it also decides whether such a read counts as sense (kept) or antisense (removed), so the later-listed feature loses these reads. Few reads are concerned: changing from the rule of version 0.1.0 moved 64 and 187 reads (0.005–0.006 %) of two full samples, all on pre-mRNA intron features, with an unchanged gene table. In version 0.1.0 the winner depended on the computer's processor (an unstable sort): between two computers about 0.03 % of the reads differed, all on pre-mRNA intron features, with an identical gene table.
 - **Strand-specific libraries assumed.** The sense/antisense distinction assumes a strand-specific library.
 - **Multimappers.** By default multimappers are left out of the counts. With `remove_multimap: False`, each multimapper is placed at one locus by a deterministic but arbitrary tie-break; no fractional or EM-based assignment is done. In `bedgraph_full/`, `multimap_depth` shows how much depth comes from multimappers.
-- **UniVec and rRNA report one alignment** (Bowtie 1), so multimapping within these references is resolved by the aligner and does not appear in `multimap_depth` or in the multimapper counts.
+- **UniVec and rRNA report one alignment** (Bowtie 1), so multimapping within these references is resolved by the aligner and does not appear in `multimap_depth` or in the multimapper counts. Which copy is reported is not guaranteed to be the best one (`-k 1` without `--best`), and can differ between settings.
+- **Borderline reads at the ends of reference sequences.** A read one or two bases longer than a short sequence (e.g. a miRNA arm or a snoRNA) aligns only by paying for a position on the N padding, and whether Bowtie 2 finds such an alignment can depend on the reference searched (a few reads of SNORD14C were no longer aligned after the ncRNA split: at most 38 of 4.6 million).
 - **One transcript per gene.** Isoform-level information (alternative starts and 3′ ends) is not represented.
 - **Composition after removal.** The composition and detection numbers of the QC report are measured after multimappers and antisense reads are removed.
 - **pre-mRNA names.** The pre-mRNA sequences are named `<gene>_intron`, but they span the whole gene on the genome: reads in exons that did not match the mature transcript count there too.
-- **Mouse not yet compared with real data.** For mouse, the mouse references were checked on synthetic reads cut from them (every read lands on its own reference), but no result on real mouse data has been compared yet; the QC report of a mouse run says so. Other species: only with your own references (§5, *Own references*), not tested by us.
+- **Mouse not yet compared with real data.** For mouse, the mouse references were checked on synthetic reads cut from them (every read lands on its own reference), but no result on real mouse data has been compared yet; the QC report of a mouse run says so. Other species: only with your own references (§5.3), not tested by us.
 
 ## 10. Running without Docker
 
@@ -440,16 +558,17 @@ The references can also be rebuilt from their sources with `buildDB/` (see its R
 
 - **cfRNA:** cell-free RNA, e.g. circulating in plasma.
 - **Fragmentomics:** the study of which parts of an RNA are present as fragments, not only how much of it.
-- **RNA class:** what a read is counted as (miRNA, tRNA, rRNA, lncRNA, protein_coding, …), from the RNA class table (§5).
+- **RNA class:** what a read is counted as (miRNA, tRNA, rRNA, lncRNA, protein_coding, …), from the RNA class table (§5.4).
 - **RNA Type** (capital T): the combination of 5′ and 3′ end chemistry of an RNA, as in the method paper; here only for the spike-ins (RiboSpike-T1 to T4).
 - **Label (biotype):** the fifth column of the reference BED, e.g. Ensembl's biotype; the RNA class table turns it into an RNA class.
 - **Reference sequence:** one sequence of a reference BED (a transcript, a miRNA arm, a tRNA, a gene span, …); the rows of `*-readcounts.csv` and `*-featureclasses.csv` (column `feature`).
 - **Feature:** a row of the gene table (`*-genecounts.csv`): a gene, a miRNA arm, a tRNA family, …
-- **Tier:** one reference in the mapping order (§8, step 2).
+- **Tier (reference):** one reference in the mapping order (§8, step 2), named by its index without the species (e.g. `ncrna_snsno`).
+- **Pass:** one round of alignment through the references, with its own settings (§5.2); by default there is one.
 - **Natural reads:** the kept reads without the spike-ins and the vector contaminants (UniVec).
 - **Kept reads:** the mapped reads after multimappers and antisense reads are removed (default settings).
 - **Tiered mapping:** alignment to an ordered stack of references; the first reference a read aligns to wins.
-- **Sense / antisense:** a read on the same / opposite strand as its reference sequence.
+- **Sense / antisense:** a read on the same / opposite strand as its reference sequence; for a multimapper, at its assigned locus.
 - **Multimapper:** a read with two or more equally good best alignments.
 - **Mature-exonic:** restricted to the processed transcript (no gene-span or precursor reads).
 - **Coverage / bedgraph:** the number of reads covering each position of a reference sequence.

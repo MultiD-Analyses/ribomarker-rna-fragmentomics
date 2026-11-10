@@ -1,5 +1,5 @@
-"""Release 0.3.0, step S3: the result changes of parseMappings and their helpers (3b positions, 3c read lengths,
-3g UniVec contigs, 3h gene lengths). Run from the repository root: python -m pytest docker/tests/parse"""
+"""Release 0.3.0: the result changes of parseMappings and their helpers (positions, read lengths,
+UniVec contigs, gene lengths). Run from the repository root: python -m pytest docker/tests/parse"""
 import os
 import shutil
 import subprocess
@@ -110,7 +110,7 @@ def test_read_length_table_has_no_upper_limit(tmp_path):
             read.set_tag('XF', f'{contig}|1|Unique')
             bam.write(read)
     result = subprocess.run([sys.executable, str(pm_path), '--samples', 'R/samples.csv', '--threads', '1', '--output',
-                             'R', '--bed', str(bed), '--bampath', 'R/alignments', '-q'], cwd=tmp_path,
+                             'R', '--bed', str(bed), '--bampath', 'R/alignments'], cwd=tmp_path,
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stderr[-2000:]
     rows = (run / 'R-classlengths.csv').read_text().splitlines()
@@ -178,7 +178,7 @@ def test_merged_mirgenedb_names_get_their_length():
 # ----------------------------------------------------------------------------- 3f: join completeness
 @pytest.mark.parametrize('species', ['human', 'mouse'])
 def test_every_counted_name_leads_back_to_its_bed_feature(species):
-    """Plan 3f / §8 (critique 2026-10-27: the planned join test was missing): the names a run writes into
+    """Release 0.3.0 (critique 2026-10-27: the planned join test was missing): the names a run writes into
     readcounts/featureclasses (BED feature + _5p/_3p/_internal/_whole for classes with positions, _multimap,
     _antisense, in either order) lead back to their BED feature, through which the annotation columns (length,
     gene symbols) are joined. Every feature of the installed references BED; skipped without it."""

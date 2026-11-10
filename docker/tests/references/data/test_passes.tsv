@@ -1,0 +1,5 @@
+pass	applies_to	max_mismatches	min_length	max_length	n_overhang
+1	all	0	-	-	1
+2	bowtie1	standard	-	-	standard
+2	ncrna_lnc,cdna,genome	standard	20	-	standard
+2	other	1	-	-	-

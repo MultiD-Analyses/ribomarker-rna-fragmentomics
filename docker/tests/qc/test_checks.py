@@ -1,4 +1,4 @@
-"""Consistency checks C1-C10 and Kind A rules: all applicable checks are
+"""Consistency checks C1-C11 and Kind A rules: all applicable checks are
 'equal' on the synthetic data, and each check reports 'differs' when an input is changed
 so that its identity no longer holds."""
 import json
@@ -28,7 +28,7 @@ def test_all_checks_equal_on_synthetic_data(collected):
             assert status == 'not applicable'
         else:
             assert status == 'equal', f'{check_id} {sample} {subject}: {status}'
-    assert sum(1 for c in report['checks'] if c['id'] == 'C3') == len(report['samples']) * 10   # 11 tiers, 10 transitions per sample
+    assert sum(1 for c in report['checks'] if c['id'] == 'C3') == len(report['samples']) * 13   # 14 tiers (0.4.0), 13 transitions per sample
     assert sum(1 for c in report['checks'] if c['id'] == 'C9') == len(qcCollect.SAMPLE_TABLES)
 
 
@@ -67,8 +67,9 @@ def test_gene_checks_not_applicable_without_gene_table(tmp_path, setting):
     assert not any('genecounts' in w['source'] for w in report['warnings'])
     assert not any(record['id'].startswith('counts.')
                    for data in report['samples'].values() for record in data['metrics'])
-    antisense_warning = any(w['source'] == 'config: remove_antisense' for w in report['warnings'])
-    assert antisense_warning == (setting == 'remove_antisense')
+    # release 0.4.0: no warning for remove_antisense False any more (the tagging gap it named is closed).
+    # C11 is not judged here: only the configuration changes, the outputs stay those of the default flags.
+    assert not any(w['source'] == 'config: remove_antisense' for w in report['warnings'])
 
 
 def test_missing_spike_tables_are_not_evaluable_when_spike_counting_is_on(tmp_path):
@@ -115,7 +116,11 @@ def one_more_read_in_tier_log(path):
 
 
 def add_sample_row(path):
-    path.write_text(path.read_text() + 'S9,1,1,1,1,1\n')
+    """A row for a sample S9 that is not in the sample sheet, with as many fields as the header (release 0.4.0:
+    mappingstats has 8 columns)."""
+    text = path.read_text()
+    width = len(text.splitlines()[0].split(','))
+    path.write_text(text + 'S9' + ',1' * (width - 1) + '\n')
 
 
 def change(run, mode):
@@ -141,6 +146,7 @@ def change(run, mode):
         'C7': lambda: add_one_to_table_cell(table('genecounts'), first_gene(table('genecounts')), 'S1'),
         'C9': lambda: add_sample_row(table('mappingstats')),
         'C10': lambda: add_one_to_table_cell(table('mappingstats'), 'S1', 'Unique'),
+        'C11': lambda: add_one_to_table_cell(table('mappingstats'), 'S1', 'Antisense'),
     }
 
 

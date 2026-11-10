@@ -4,7 +4,7 @@ Used by `run --demo` and by the level A test.
 
 Checked tables (found anywhere below --outdir):
   *-trimstats.csv     dimer_reads, trimmed_reads, merged_reads (PE) / <15nt_reads (SE)
-  *-mappingstats.csv  Mapped, Unmapped, Unique, Multi, Total
+  *-mappingstats.csv  Mapped, Unmapped, Unique, Multi, Antisense, AntisenseMulti (0.4.0), Total
   *-classcounts.csv   reads per RNA class (class ids; typecounts.csv before 0.3.0)
   *-genecounts.csv    reads per gene
   *-ribospike.csv     reads per spike
@@ -34,9 +34,7 @@ STAT_TABLES = ("trimstats", "mappingstats")
 
 def find_one(outdir, pattern):
     hits = glob.glob(os.path.join(outdir, "**", pattern), recursive=True)
-    if len(hits) > 1:   # parseMappings also writes a *-ribospike.csv; use the one from countRiboSpike
-        hits = [h for h in hits if f"{os.sep}ribospike{os.sep}" in h]
-    return hits[0] if len(hits) == 1 else None
+    return hits[0] if len(hits) == 1 else None      # several: a run of 0.3.0 or earlier with two *-ribospike.csv
 
 
 def read_csv(path):

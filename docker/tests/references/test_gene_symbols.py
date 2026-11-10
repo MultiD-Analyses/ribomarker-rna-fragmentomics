@@ -1,4 +1,4 @@
-"""buildDB/make_gene_symbols.py (release 0.3.0, 3f) on small made-up inputs in the formats of the real files
+"""buildDB/make_gene_symbols.py (release 0.3.0) on small made-up inputs in the formats of the real files
 (HGNC, MGI and MirGeneDB checked with --inspect on 2026-10-26; miRBase still assumed). Run from the repository root:
 python -m pytest docker/tests/references"""
 import gzip

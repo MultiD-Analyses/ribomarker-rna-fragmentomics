@@ -30,6 +30,12 @@ fastp-filtered pairs). Their expected fate follows the documented rules
 (see the user guide); where it also depends on
 aligner or fastp defaults, the category text says so. Sample S3 holds only the
 exploratory categories C32-C35: their outcome is reported, not checked.
+
+Sample S4 (release 0.4.0, the ncRNA split): categories C36-C39 on the four ncRNA sub-references, among them the
+graded case C36 (a snoRNA read that matches SNORD22 and its host lncRNA SNHG1 equally well: kept as snoRNA, because
+ncrna_snsno comes before ncrna_lnc). S4 has its own random seed, and S1-S3 are drawn with the screen of the
+references before 0.4.0 (without the records added for S4), so that S1-S3 stay byte-identical; their inserts are
+then checked against the added records (none may occur in them).
 """
 import argparse
 import gzip
@@ -39,13 +45,19 @@ import re
 import sys
 from collections import defaultdict
 
+import numpy as np
+
 SEED = 20260929
-SAMPLES = ("S1", "S2", "S3")
+SEED_S4 = 20261103   # sample S4 (0.4.0) has its own generator, so S1-S3 do not change
+SAMPLES = ("S1", "S2", "S3", "S4")
+OWN_SEED_SAMPLES = ("S4",)
+# Records added to the mini references in 0.4.0 for S4 (make_mini_assets.py); S1-S3 are drawn without them.
+ADDED_RECORDS = ("ENST00000386347|MT-TL1", "ENST00000384756|SNORD22", "ENST00000618786|RN7SL1", "ENST00000668048|SNHG1")
 EXPLORATORY_SAMPLES = ("S3",)   # outcome reported by check_truth.py, no expected values beyond trimming
 READ_LEN = 76
 MARGIN = 20   # fragments stay >= 20 nt away from contig ends (N pad of 10 + 2-nt clipping + safety)
 K = 12        # genome fragments may not share any 12-mer with the transcript references (see Screen)
-TRANSCRIPT_TIERS = ("human-ncrna", "human-cdna")
+TRANSCRIPT_TIERS = ("human-ncrna_mt", "human-ncrna_snsno", "human-ncrna_other", "human-ncrna_lnc", "human-cdna")
 
 # Library sequence after the insert, as observed in raw reads (then poly-G on this instrument).
 R1_TAIL = "TGGAATTCTCGGGTGCCAAGG" + "AACTCCAGTCACTTAGGCATCTCGTATGCCGTCTTCTGCTTG" + "A" * 10
@@ -108,8 +120,8 @@ CATEGORIES = [
     dict(id="C10", what="piRNA, full length", n=(43, 41), draw=("whole", "human-pirna", "piR-hsa-9"),
          mapping="unique", tier="human-pirna", rna_class="piRNA", gene="piR-hsa-9"),
     dict(id="C11", what="lncRNA fragment", n=(61, 67),
-         draw=("contig", "human-ncrna", "ENST00000786877|H19", 30, 1, "sense"),
-         mapping="unique", tier="human-ncrna", rna_class="lncRNA", gene="H19"),
+         draw=("contig", "human-ncrna_lnc", "ENST00000786877|H19", 30, 1, "sense"),
+         mapping="unique", tier="human-ncrna_lnc", rna_class="lncRNA", gene="H19"),
     dict(id="C12", what="mRNA fragment, ETS2", n=(67, 71), draw=("contig", "human-cdna", CDNA_ETS2, 30, 1, "sense"),
          mapping="unique", tier="human-cdna", rna_class="protein_coding", gene="ETS2"),
     dict(id="C13", what="mRNA fragment, BTG3", n=(71, 73), draw=("contig", "human-cdna", CDNA_BTG3, 30, 1, "sense"),
@@ -176,7 +188,21 @@ CATEGORIES = [
          draw=("contig", "human-cdna", CDNA_MRPL39, 17, 1, "sense"), mismatches=(8,), mapping="exploratory",
          gene="MRPL39"),
     dict(id="C35", what="17-nt H19 fragment, exact (control)", n=(0, 0, 20), exploratory=True,
-         draw=("contig", "human-ncrna", "ENST00000786877|H19", 17, 1, "sense"), mapping="exploratory", gene="H19"),
+         draw=("contig", "human-ncrna_lnc", "ENST00000786877|H19", 17, 1, "sense"), mapping="exploratory", gene="H19"),
+    # ---- sample S4 (0.4.0): the four ncRNA sub-references ----
+    dict(id="C36", what="SNORD22 fragment, also exact in its host lncRNA SNHG1: a tie in one ncRNA reference before "
+                        "0.4.0 (removed as multimapper); since the split ncrna_snsno takes it first (kept as snoRNA)",
+         n=(0, 0, 0, 41), draw=("contig", "human-ncrna_snsno", "ENST00000384756|SNORD22", 30, 2, "sense"),
+         mapping="unique", tier="human-ncrna_snsno", rna_class="snoRNA", gene="SNORD22"),
+    dict(id="C37", what="mitochondrial tRNA fragment, MT-TL1", n=(0, 0, 0, 23),
+         draw=("contig", "human-ncrna_mt", "ENST00000386347|MT-TL1", 30, 1, "sense"),
+         mapping="unique", tier="human-ncrna_mt", rna_class="Mt_tRNA", gene="MT-TL1"),
+    dict(id="C38", what="misc_RNA fragment, RN7SL1 (7SL RNA)", n=(0, 0, 0, 19),
+         draw=("contig", "human-ncrna_other", "ENST00000618786|RN7SL1", 30, 1, "sense"),
+         mapping="unique", tier="human-ncrna_other", rna_class="misc_RNA", gene="RN7SL1"),
+    dict(id="C39", what="lncRNA fragment of SNHG1 outside SNORD22 (unique)", n=(0, 0, 0, 29),
+         draw=("contig", "human-ncrna_lnc", "ENST00000668048|SNHG1", 30, 1, "sense"),
+         mapping="unique", tier="human-ncrna_lnc", rna_class="lncRNA", gene="SNHG1"),
 ]
 
 
@@ -207,6 +233,8 @@ IDENTITY = {
     "C30": ("protein_coding", "ETS2"),       "C31": ("protein_coding", "ETS2"),
     "C32": ("protein_coding", "BTG3"),       "C33": ("protein_coding", "ETS2"),
     "C34": ("protein_coding", "MRPL39"),     "C35": ("lncRNA", "H19"),
+    "C36": ("snoRNA, inside its host lncRNA", "SNORD22|SNHG1"), "C37": ("Mt_tRNA", "MT-TL1"),
+    "C38": ("misc_RNA", "RN7SL1"),           "C39": ("lncRNA", "SNHG1"),
 }
 ALIGNMENTS = {"unique": 1, "multi": 2, "spike": 1, "unmapped": 0}
 
@@ -260,11 +288,15 @@ class Screen:
     Any shared 12-mer rejects the fragment.
     """
 
-    def __init__(self, refs):
-        self.all_seq = "|".join(seq.upper() for tier in refs.values() for seq in tier.values())
+    def __init__(self, refs, exclude=()):
+        """exclude: contigs left out (the records added for S4, when S1-S3 are drawn)."""
+        self.all_seq = "|".join(seq.upper() for tier in refs.values() for contig, seq in tier.items()
+                                if contig not in exclude)
         self.transcript_kmers = set()
         for tier in TRANSCRIPT_TIERS:
-            for seq in refs[tier].values():
+            for contig, seq in refs[tier].items():
+                if contig in exclude:
+                    continue
                 for strand in (seq.upper(), revcomp(seq.upper())):
                     self.transcript_kmers.update(strand[i:i + K] for i in range(len(strand) - K + 1))
 
@@ -552,6 +584,52 @@ def orientation(cat):
     return draw[5] if draw[0] == "contig" else "sense"
 
 
+# Bowtie 2 penalties in the pipeline's settings (--very-sensitive end-to-end, --ignore-quals, --np 5): mismatch 6,
+# an N in the read or the reference 5, a gap 5 + 3 per base; a read of length L is reported only if its penalty
+# is at most 0.6 + 0.6 * L (--score-min L,-0.6,-0.6) [Bowtie 2 manual defaults, not checked here]
+MISMATCH, N_PENALTY, GAP_OPEN, GAP_EXTEND = 6, 5, 5, 3
+
+
+def lowest_penalty(read, reference):
+    """The lowest penalty of an alignment of all of `read` to some stretch of `reference` (affine gaps; one row
+    of the dynamic programme per read base, vectorised over the reference)."""
+    ref = np.frombuffer(reference.encode(), dtype=np.uint8)
+    columns = np.arange(len(ref) + 1)
+    infinite = 1e9
+    match = np.zeros(len(ref) + 1)                              # row 0: the alignment may start anywhere
+    read_gap = np.full(len(ref) + 1, infinite)                  # last step: a read base against no reference base
+    ref_gap = np.full(len(ref) + 1, infinite)                   # last step: a reference base not in the read
+    for base in read.encode():
+        cost = np.where((ref == base) & (base != ord("N")), 0,
+                        np.where((ref == ord("N")) | (base == ord("N")), N_PENALTY, MISMATCH))
+        best = np.minimum(np.minimum(match, read_gap), ref_gap)
+        new_match = np.full(len(ref) + 1, infinite)
+        new_match[1:] = best[:-1] + cost
+        new_read_gap = np.minimum(np.minimum(match, ref_gap) + GAP_OPEN + GAP_EXTEND, read_gap + GAP_EXTEND)
+        opened = np.minimum(new_match, new_read_gap) - GAP_EXTEND * columns
+        new_ref_gap = np.full(len(ref) + 1, infinite)            # min over earlier columns k: H[k] + open + 3(j - k)
+        new_ref_gap[1:] = np.minimum.accumulate(opened)[:-1] + GAP_OPEN + GAP_EXTEND * columns[1:]
+        match, read_gap, ref_gap = new_match, new_read_gap, new_ref_gap
+    return min(match.min(), read_gap.min())
+
+
+def could_align(read, record):
+    """True if Bowtie 2 could report `read` on `record` (either strand) in the pipeline's settings."""
+    allowed = 0.6 + 0.6 * len(read)
+    return any(lowest_penalty(read, strand) <= allowed for strand in (record.upper(), revcomp(record.upper())))
+
+
+def check_added_records(pairs, refs, cat_by_id, sample):
+    """S1-S3 (0.4.0): no insert that reaches the aligner may be alignable to a record added for S4, so that their
+    truth stays valid (dimers and inserts under 15 nt are removed by trimming)."""
+    added = [seq for tier in refs.values() for contig, seq in tier.items() if contig in ADDED_RECORDS]
+    for cat_id, source, start, insert, _ in pairs:
+        if cat_by_id[cat_id].get("lost") in ("dimer", "short"):
+            continue
+        if any(could_align(insert.upper(), record) for record in added):
+            sys.exit(f"ERROR: {sample} {cat_id}: an insert could align to a record added for S4")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--references", default="test/synthetic_qc/bundle/references")
@@ -561,13 +639,18 @@ def main():
     rng = random.Random(SEED)
     refs, bed = load_references(args.references)
     cat_by_id = {c["id"]: c for c in CATEGORIES}
-    screen = Screen(refs)
+    screen_all = Screen(refs)
+    screen_before = Screen(refs, exclude=ADDED_RECORDS)     # S1-S3: the references as they were drawn with
     spikes = spike_list(refs)
     fastq_dir = os.path.join(args.out, "fastq")
     os.makedirs(fastq_dir, exist_ok=True)
 
     key_rows, truth_rows = [], []
     for s_idx, sample in enumerate(SAMPLES):
+        if sample in OWN_SEED_SAMPLES:
+            rng, screen = random.Random(SEED_S4), screen_all
+        else:
+            screen = screen_before
         pairs = []
         for cat in CATEGORIES:
             n = n_of(cat, s_idx)
@@ -594,6 +677,8 @@ def main():
                              orientation(cat), len(insert), insert, source, start,
                              fate(cat, "pe"), fate(cat, "se"), cat.get("tier") or "",
                              cat.get("alignments", ALIGNMENTS.get(cat.get("mapping"), ""))])
+        if screen is screen_before:
+            check_added_records(pairs, refs, cat_by_id, sample)
         write_fastq_gz(os.path.join(fastq_dir, f"{sample}_R1_001.fastq.gz"), r1)
         write_fastq_gz(os.path.join(fastq_dir, f"{sample}_R2_001.fastq.gz"), r2)
 

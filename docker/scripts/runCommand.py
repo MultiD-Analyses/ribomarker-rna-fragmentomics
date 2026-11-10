@@ -2,7 +2,7 @@
 
   python docker/scripts/main.py run SHEET OUTPUT [--species NAME] [--threads N]
                                     [--config FILE] [--run-id NAME] [--references FOLDER]
-                                    [--tiers FILE] [--rna-classes FILE] [--unlock]
+                                    [--tiers FILE] [--passes FILE] [--rna-classes FILE] [--unlock]
 
 run reads the samples from SHEET (a CSV file in the folder of the FASTQ files), checks everything it can
 before starting, writes the pipeline's sample sheet and the configuration into OUTPUT/<run id>/, runs the pipeline with OUTPUT as the working folder and
@@ -33,7 +33,9 @@ import yaml
 import checkTruth
 import codeFingerprint
 import dbPaths
+import mapSchedule
 import refTables
+import removedKeys
 
 PIPELINE_DIR = Path(os.environ.get('RIBOMARKER_PIPELINE_DIR', Path(__file__).resolve().parents[1]))
 REFERENCES = Path(os.environ.get('RIBOMARKER_REFERENCES', PIPELINE_DIR / 'assets'))
@@ -50,18 +52,17 @@ COLUMNS = ('sample', 'fastq_file', 'fastq_file2')
 GROUP = 'RiboMarker'                                    # the sample sheet's group column (not used)
 
 DEFAULTS = {                                            # today's validated settings
-    'remove_multimap': True, 'remove_antisense': True, 'collapse': False, 'keep_classes': 'all',
-    'qc_report': True, 'trim_fastq': True, 'count_ribospike': True,
-    'multimap': 100, 'trim_only': False, 'subsample_reads': 0,
+    'remove_multimap': True, 'remove_antisense': True, 'keep_classes': 'all',
+    'qc_report': True, 'count_ribospike': True, 'multimap': 100,
 }
 ALLOWED_KEYS = {'multimap', 'keep_classes', 'keep_types', 'remove_multimap', 'remove_antisense',
-                'count_ribospike', 'qc_report', 'tiers', 'rna_classes', 'report_group'}   # --config under run
-FILE_KEYS = {'tiers', 'rna_classes'}    # a file; in Docker give it with --tiers / --rna-classes (mounted)
+                'count_ribospike', 'qc_report', 'tiers', 'passes', 'rna_classes', 'report_group'}   # --config under run
+FILE_KEYS = {'tiers', 'passes', 'rna_classes'}    # a file; in Docker give it with --tiers / --passes / --rna-classes
 BOOLEAN_KEYS = {'remove_multimap', 'remove_antisense', 'count_ribospike', 'qc_report'}
 TYPE_LIST = re.compile(r'^[A-Za-z0-9_.+-]+(,[A-Za-z0-9_.+-]+)*$')   # keep_classes: all, or miRNA,tRNA,...
 OLD_KEYS = {'keep_types': 'keep_classes'}   # names before 0.3.0: accepted with a warning
 SET_BY_RUN = {'dbdir', 'input_dir', 'output_prefix', 'samples', 'host_input_dir', 'host_assets_dir',
-              'species', 'threads', 'paired_end', 'report_title'}
+              'species', 'threads', 'paired_end', 'report_title', 'tiers_sha256', 'passes_sha256'}
 
 DEFAULT_THREADS = 8          # the starters' default too; MINUTES_PER_R1_GB was measured with 8
 MIN_MEMORY_GB = 12           # warning below this (8 threads: peak 4.1 GB with 2 samples, 8.1 GB with 6
@@ -191,13 +192,8 @@ def rejected_reason(key, value):
     """Why a --config key/value cannot be used under run, or None."""
     if key in SET_BY_RUN:
         return 'set by run itself (from the command line or the files)'
-    if key == 'trim_fastq' and value is False:
-        return 'run needs trimming'
-    if key == 'trim_only' and value is True:
-        return 'a trimming-only run has no QC report'
-    if key == 'collapse' and value is True:
-        return ('collapse: True maps each distinct sequence once and splits multimapper counts over the tied '
-                'loci, so the QC read counts (checks C2-C4) are not read counts')
+    if key in removedKeys.REMOVED_KEYS:           # removed in 0.4.0: the old default is ignored with a warning
+        return None if removedKeys.is_old_default(key, value) else f'removed in release 0.4.0 ({removedKeys.REMOVED_KEYS[key][1]})'
     if key in DEFAULTS and value == DEFAULTS[key] and type(value) is type(DEFAULTS[key]):
         return None                                   # the default value itself is harmless
     if key not in ALLOWED_KEYS:
@@ -250,25 +246,29 @@ def pipeline_config(settings, *, input_dir, references, run_id, sheet, species, 
 
 
 # ----------------------------------------------------------------------------- checks before starting
-def check_references(references, species, tiers_file=None):
-    """The tiers of the species exist; returns warnings (e.g. no MANIFEST). tiers_file: a replaced tier list,
-    whose relative index paths are resolved against the references folder (dbPaths.py)."""
+def resolve_schedule(references, species, tiers_file=None, multimap=100, count_ribospike=True, passes_file=None):
+    """(dbpaths file, schedule rows, references left out, warnings) of the run: the references folder's tier list in
+    the order of the order file tiers_file (mapSchedule.py), or in its own order, through the passes of passes_file
+    (or one pass). RunError if they cannot be used."""
     try:
         dbpaths = dbPaths.find_dbpaths(str(references), species)
     except FileNotFoundError as error:
         raise RunError(str(error))
-    tiers = dbPaths.read_dbpaths(dbpaths)
-    if tiers_file:
-        try:
-            replaced = dbPaths.read_dbpaths(tiers_file, str(references))
-        except ValueError:
-            raise RunError(f'--tiers {tiers_file}: every line must be map_cmd,index,retain (as in {dbpaths})')
-        problems = dbPaths.check_tier_list(replaced, tiers, species)
-        if problems:
-            raise RunError(f'--tiers {tiers_file} cannot be used:\n  ' + '\n  '.join(problems))
-        tiers = replaced
-    missing = [index for _, index, _ in tiers
-               if not any(os.path.exists(index + ext) for ext in ('.1.bt2', '.1.ebwt', '.1.bt2l'))]
+    rows, left_out, problems, warnings = mapSchedule.resolve(dbpaths, species, multimap, tiers_file, count_ribospike,
+                                                             passes_file)
+    if problems:
+        given = ' and '.join(f'--{k} {f}' for k, f in (('tiers', tiers_file), ('passes', passes_file)) if f)
+        raise RunError(f'{given or dbpaths} cannot be used:\n  ' + '\n  '.join(problems))
+    return dbpaths, rows, left_out, warnings
+
+
+def check_references(references, species, tiers_file=None, count_ribospike=True):
+    """The references of the run exist; returns warnings (e.g. no MANIFEST). tiers_file: an order file
+    (mapSchedule.py)."""
+    dbpaths, rows, _, _ = resolve_schedule(references, species, tiers_file, count_ribospike=count_ribospike)
+    index_of = {os.path.basename(index): index for _, index, _ in dbPaths.read_dbpaths(dbpaths)}
+    indexes = [index_of[row['index_name']] for row in rows]
+    missing = [i for i in indexes if not any(os.path.exists(i + ext) for ext in ('.1.bt2', '.1.ebwt', '.1.bt2l'))]
     bed = Path(references) / f'{species}.bed'
     if missing or not bed.exists():
         raise RunError(f'the {species} references in {references} are incomplete; missing: '
@@ -292,12 +292,13 @@ def check_class_table(references, species, explicit=None, tiers_file=None):
     missing = classes.check_labels(labels, quiet=True)
     warnings = [f'{len(missing)} label(s) of {species}.bed not in the RNA class table {Path(path).name}: '
                 f'{", ".join(missing)}; each is counted as its own class'] if missing else []
-    tiers = dbPaths.read_dbpaths(tiers_file, str(references)) if tiers_file else \
-        dbPaths.read_dbpaths(dbPaths.find_dbpaths(str(references), species))
-    unknown = classes.unknown_tiers(dbPaths.tier_id(index, species) for _, index, _ in tiers)
+    _, rows, _, _ = resolve_schedule(references, species, tiers_file, count_ribospike=False)  # order checked before
+    unknown = classes.unknown_tiers(row['reference'] for row in rows)
     if unknown:
         warnings.append(f'the RNA class table {Path(path).name} names tiers that the tier list does not have: '
-                        f'{", ".join(unknown)} (misspelt, or a table for other references)')
+                        f'{", ".join(unknown)} (misspelt, or a table for other references)'
+                        f'{classes.split_tier_note(unknown)}')
+    warnings += classes.obsolete_rows()
     return path, warnings
 
 
@@ -397,7 +398,7 @@ a run cleanly.
 Test the installation in a few minutes (synthetic reads whose results are known):
   run --demo OUTPUT          (Docker: ... IMAGE run --demo /data/output)
 
-IMAGE is the pipeline's container image; its name and version are in the README.
+IMAGE is the pipeline's container image; its name is in the user guide, and the version of each release in the CHANGELOG.
 
 Exit status: 0 = results valid; 1 = the pipeline failed or the results are not valid;
 2 = refused before starting (the message says why and what to do); 130 = interrupted.
@@ -425,8 +426,11 @@ def parse_args(argv):
                     + ', '.join(sorted(ALLOWED_KEYS)))
     ap.add_argument('--run-id', help='name of the run folder and the report title (default: ribomarker)')
     ap.add_argument('--references', default=str(REFERENCES), help='references folder (default: %(default)s)')
-    ap.add_argument('--tiers', help='advanced: a tier list (map_cmd,index,retain per line) replacing the references '
-                                    "folder's <species>.dbpaths.csv; index paths relative to the references folder")
+    ap.add_argument('--tiers', help='experimental: an order file (one column, header "tier", then the reference names '
+                                    'in the order to use; copy tables/order.tsv of any 0.4.0 run and change it)')
+    ap.add_argument('--passes', help='experimental: a passes file (tab-separated: pass, applies_to, max_mismatches, '
+                                     'min_length, max_length, n_overhang; user guide, "Order of the references and '
+                                     'passes")')
     ap.add_argument('--rna-classes', help='advanced: an RNA class table (tab-separated, columns as in '
                                           'docker/tables/human.rna_classes.tsv) replacing the default one')
     ap.add_argument('--unlock', action='store_true',
@@ -462,20 +466,24 @@ def prepare(args):
                        'species give your own references with --references FOLDER (user guide, "Own references")')
 
     settings = user_config(args.config)
-    renamed = []
+    removed_warnings, _ = removedKeys.check_removed_keys(settings)   # only old defaults are left (user_config)
+    for key in removedKeys.REMOVED_KEYS:
+        settings.pop(key, None)
+    renamed = [f'--config: {warning}' for warning in removed_warnings]
     for old, new in OLD_KEYS.items():
         if old in settings:
             value = settings.pop(old)
             settings.setdefault(new, value)            # the new key wins if both are given
             renamed.append(f'--config: {old} is called {new} since 0.3.0; '
                            + (f'{new} is used' if settings[new] != value else 'its value is used'))
-    for key, option in (('tiers', getattr(args, 'tiers', None)), ('rna_classes', getattr(args, 'rna_classes', None))):
+    for key, option in (('tiers', getattr(args, 'tiers', None)), ('passes', getattr(args, 'passes', None)),
+                        ('rna_classes', getattr(args, 'rna_classes', None))):
         if option:                                 # the command-line option wins over the --config key
             settings[key] = option
         if settings.get(key):
             if not Path(settings[key]).is_file():
                 raise RunError(f'{key}: file not found: {settings[key]}'
-                               + (' (in Docker give it with --tiers / --rna-classes, which mount it)'
+                               + (' (in Docker give it with --tiers / --passes / --rna-classes, which mount it)'
                                   if not option else ''))
             settings[key] = str(Path(settings[key]).resolve())
     if settings.get('report_group'):               # the column must exist (the report groups samples by it)
@@ -483,17 +491,30 @@ def prepare(args):
         if settings['report_group'] not in columns:
             raise RunError(f"report_group: {settings['report_group']!r} is not a column of the sample sheet "
                            f"(columns: {', '.join(columns)})")
-    warnings = renamed + check_references(references, args.species, settings.get('tiers'))
+    count_ribospike = settings.get('count_ribospike', DEFAULTS['count_ribospike'])
+    warnings = renamed + check_references(references, args.species, settings.get('tiers'), count_ribospike)
+    _, schedule_rows, left_out, schedule_warnings = resolve_schedule(
+        references, args.species, settings.get('tiers'), settings.get('multimap', DEFAULTS['multimap']),
+        count_ribospike, settings.get('passes'))
+    warnings += [f'--passes {w}' for w in schedule_warnings]
+    if left_out:
+        warnings.append(f"--tiers {Path(settings['tiers']).name} leaves out {', '.join(left_out)}; "
+                        'not used in this run')
+    order_names = mapSchedule.order_in_effect(dbPaths.find_dbpaths(str(references), args.species), args.species,
+                                              settings.get('tiers'))
+    schedule = mapSchedule.render(schedule_rows, settings.get('tiers'), left_out, settings.get('passes'), order_names)
     classes_path, class_warnings = check_class_table(references, args.species, settings.get('rna_classes'),
                                                      settings.get('tiers'))
     warnings += class_warnings
-    if settings.get('keep_classes'):              # old class names are translated (D2: with a warning)
+    if settings.get('keep_classes'):              # old class names are translated (release 0.3.0: with a warning)
         table = refTables.ClassTable(classes_path, args.species)
         for old, new in refTables.renamed_keep(settings['keep_classes'], table):
             warnings.append(f'keep_classes: {old} is a name before 0.3.0; the RNA class {new} is kept (all of it)')
     own_tiers = dbPaths.find_dbpaths(str(references), args.species)
     tables = {'rna_classes': refTables.provenance(classes_path, refTables.default_table(args.species)),
               'tiers': refTables.provenance(settings.get('tiers') or own_tiers, own_tiers)}
+    if settings.get('passes'):                     # no default file: given = replaced
+        tables['passes'] = dict(refTables.provenance(settings['passes'], settings['passes']), replaced=True)
     if args.species == 'mouse':
         warnings.append('mouse references not validated on mouse data: the numbers of this run '
                         'have not been compared with a known mouse result')
@@ -528,6 +549,9 @@ def prepare(args):
     sheet_text = ''.join(','.join(row) + '\n' for row in sheet_rows(samples))
     config = pipeline_config(settings, input_dir=input_dir, references=references, run_id=run_id,
                              sheet=sheet, species=args.species, threads=threads, mode=mode, title=title)
+    for key in ('tiers', 'passes'):                # a resume with an edited order or passes file is refused (run_state)
+        if settings.get(key):
+            config[f'{key}_sha256'] = refTables.sha256(settings[key])
     config_text = yaml.safe_dump(config, sort_keys=False)
     state = run_state(run_dir, sheet_text, config_text)   # before gzip -t: a finished run is refused at once
     say(f'checking {len(files)} FASTQ files (gzip -t) ...')
@@ -541,7 +565,7 @@ def prepare(args):
     return dict(input_dir=input_dir, sheet_path=sheet_path, output=output, run_dir=run_dir, run_id=run_id,
                 title=title, mode=mode, samples=samples, warnings=warnings, threads=threads, state=state,
                 sheet_text=sheet_text, config_text=config_text, first_start=first_start,
-                input_bytes=input_bytes, minutes=minutes, tables=tables)
+                input_bytes=input_bytes, minutes=minutes, tables=tables, schedule=schedule)
 
 
 def pipeline_version():
@@ -635,7 +659,9 @@ def run_snakemake(p, unlock):
         process = subprocess.Popen(base + ['--cores', str(p['threads']), '--rerun-incomplete'],   # no --keep-incomplete
                                    cwd=p['output'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    text=True, errors='replace', start_new_session=True,
-                                   env=dict(os.environ, PYTHONUNBUFFERED='1'))   # the scripts' lines reach run.log in order
+                                   # PYTHONUNBUFFERED: the scripts' lines reach run.log in order; RIBOMARKER_RUN:
+                                   # the Snakefile leaves the schedule printout to run
+                                   env=dict(os.environ, PYTHONUNBUFFERED='1', RIBOMARKER_RUN='1'))
         interrupted = []
 
         def stop(signum, frame):
@@ -704,6 +730,7 @@ def main(argv=None):
         return 2
     for warning in p['warnings']:
         say(f'WARNING: {warning}')
+    say(p['schedule'])
     p['run_dir'].mkdir(parents=True, exist_ok=True)
     (p['run_dir'] / 'samples.csv').write_text(p['sheet_text'])
     (p['run_dir'] / 'run_config.yaml').write_text(p['config_text'])

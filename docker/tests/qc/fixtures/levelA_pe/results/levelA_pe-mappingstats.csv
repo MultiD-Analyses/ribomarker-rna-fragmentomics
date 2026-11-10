@@ -1,4 +1,5 @@
-sample,Mapped,Unmapped,Unique,Multi,Total
-S1,856,13,593,31,869
-S2,666,11,629,37,677
-S3,80,0,80,0,80
+sample,Mapped,Unmapped,Unique,Multi,Antisense,AntisenseMulti,Total
+S1,856,13,593,31,38,0,869
+S2,666,11,629,37,40,0,677
+S3,80,0,80,0,0,0,80
+S4,112,0,112,0,0,0,112

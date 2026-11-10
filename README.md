@@ -24,11 +24,14 @@ Every read gets **one RNA class**, by **prioritized (tiered) mapping**: the read
 | 6 | miRNA star arm (counted as miRNA) | MirGeneDB |
 | 7 | miRNA precursor (pre-miRNA) | MirGeneDB |
 | 8 | piRNA | piRBase |
-| 9 | other non-coding RNA (e.g. lncRNA, snoRNA, snRNA) | Ensembl ncRNA |
-| 10 | protein-coding transcripts (protein_coding) | Ensembl cDNA |
-| 11 | genome: protein-coding gene spans (pre-mRNA, mostly intronic), tRNA loci with leader, trailer or intron (pre-tRNA), and the unannotated rest | Ensembl |
+| 9 | mitochondrial non-coding RNA (Mt_tRNA, Mt_rRNA) | Ensembl ncRNA |
+| 10 | snRNA, snoRNA, scaRNA | Ensembl ncRNA |
+| 11 | other small non-coding RNA (misc_RNA, nuclear rRNA loci) | Ensembl ncRNA |
+| 12 | lncRNA | Ensembl ncRNA |
+| 13 | protein-coding transcripts (protein_coding) | Ensembl cDNA |
+| 14 | genome: protein-coding gene spans (pre-mRNA, mostly intronic), tRNA loci with leader, trailer or intron (pre-tRNA), and the unannotated rest | Ensembl |
 
-So contaminants, spike-ins and rRNA are claimed first, the small, well-defined RNA classes come before the large transcript references, and the genome comes last. Within a reference, a read that overlaps several annotated features gets the feature of the highest-ranked RNA class (structural RNAs such as tRNA and rRNA first, protein_coding last). The RNA classes therefore partly reflect this order, not only biology ([known limitations](USER_GUIDE.md#9-known-limitations)). The order of the references (the tier list) and the RNA classes (names, ranks, groups in the report) are two tables, shown in the QC report and replaceable ([Own references](#own-references)).
+So contaminants, spike-ins and rRNA are claimed first, the small, well-defined RNA classes come before the large transcript references, and the genome comes last. Within a reference, a read that overlaps several annotated features gets the feature of the highest-ranked RNA class (structural RNAs such as tRNA and rRNA first, protein_coding last). The RNA classes therefore partly reflect this order, not only biology ([known limitations](USER_GUIDE.md#9-known-limitations)). The RNA classes (names, ranks, groups in the report) are a table, shown in the QC report and replaceable ([Own references](#own-references)). Another order of the references and several alignment passes with their own settings can be tried with `--tiers` and `--passes` (experimental; [user guide, *Order of the references and passes*](USER_GUIDE.md#52-order-of-the-references-and-passes-experimental)); the default settings are the validated ones.
 
 The steps of a run:
 
@@ -88,7 +91,7 @@ In `results/ribomarker/` (the run id; change it with `--run-id`):
 | `ribomarker-classcounts.csv`, `ribomarker-readcounts.csv` | Counts per RNA class and per reference sequence |
 | `bedgraph/`, `bedgraph_full/` | Per-transcript coverage per sample |
 | `sample_sheet.csv` | Your sample sheet, unchanged |
-| `tables/` | The tier list and the RNA class table the run used |
+| `tables/` | The order of the references, the mapping schedule and the RNA class table the run used |
 | `run_status.json`, `run.log` | Verdict, times, pipeline version, and the full log |
 
 All outputs are described in the [user guide](USER_GUIDE.md#6-outputs).
@@ -117,6 +120,16 @@ report_group: group
 
 All options and settings, with their effects: [user guide §4.3 and §5](USER_GUIDE.md#5-advanced-settings). `./ribomarker --help` lists the options.
 
+## Order of the references and passes (experimental)
+
+By default each read is aligned once, through the references in a fixed order, and the first reference that aligns it gets it. Two optional files change this: an order file (`--tiers`) gives another order of the references, and a passes file (`--passes`) aligns the reads in several passes with their own settings, for example exact alignments first and the standard settings for the reads still unaligned:
+
+```bash
+./ribomarker ~/data/fastq/samples.csv ~/data/results --tiers order.tsv --passes passes.tsv
+```
+
+Every run writes the order it used to `tables/order.tsv`; copy it and change it to make an order file. Before the run starts, the pipeline prints the mapping schedule (references down, passes across), so you can check it. Both controls are experimental: only the default settings are validated, and runs with either file are marked as non-default in the QC report. Formats, rules and examples: [user guide, *Order of the references and passes*](USER_GUIDE.md#52-order-of-the-references-and-passes-experimental).
+
 ## Own references
 
 The built-in references can be replaced by your own, for example another miRNA or piRNA database, an extra spike-in, references of another species (`--species rat` with your own `rat` files):
@@ -125,13 +138,13 @@ The built-in references can be replaced by your own, for example another miRNA o
 ./ribomarker ~/data/fastq/samples.csv ~/data/results --references ~/my_references
 ```
 
-The folder holds the Bowtie indexes, a list of them in priority order, and a BED file with the reference sequences and their labels. The RNA class table turns the labels into RNA classes: with ranks for overlapping features, groups and an order for the report, and whether a class belongs in the gene table. The tier list and the class table can also be replaced on their own, with the built-in references (`--tiers FILE`, `--rna-classes FILE`); start from the copies in a run's `tables/` folder. The easiest start is a copy of the built-in references, changed one reference at a time. Format and caveats: [user guide, *Own references*](USER_GUIDE.md#own-references); building references from their original sources: [`buildDB/`](buildDB/README.md).
+The folder holds the Bowtie indexes, a list of them in priority order, and a BED file with the reference sequences and their labels. The RNA class table turns the labels into RNA classes: with ranks for overlapping features, groups and an order for the report, and whether a class belongs in the gene table. The class table can also be replaced on its own, with the built-in references (`--rna-classes FILE`); start from the copy in a run's `tables/` folder. The easiest start is a copy of the built-in references, changed one reference at a time. Format and caveats: [user guide, *Own references*](USER_GUIDE.md#53-own-references); building references from their original sources: [`buildDB/`](buildDB/README.md).
 
 ## Citing
 
 If you use the pipeline, please cite this repository, with the version you used (shown in the QC report and in `run_status.json`):
 
-> Smelik M. RiboMarker: a pipeline for RNA fragmentomics, version X.Y.Z. MultiD Analyses AB; 2026. https://doi.org/10.5281/zenodo.23475622
+> Smelik M, Klassen R. RiboMarker: a pipeline for RNA fragmentomics, version X.Y.Z. MultiD Analyses AB; 2026. https://doi.org/10.5281/zenodo.23475622
 
 The DOI above stands for all versions (Zenodo); each version also has its own DOI, listed on the Zenodo record. Code: https://github.com/MultiD-Analyses/ribomarker-rna-fragmentomics
 
@@ -140,6 +153,10 @@ The *Cite this repository* button on GitHub (from [CITATION.cff](CITATION.cff)) 
 > Clark RC, Manning AC, Howard JM, Barberán-Soler S, Kazakov SA. A method of comprehensive sequencing analysis of the small RNA fragmentome (RiboMarker). *RNA* 2026;32(7):1156–1181. https://doi.org/10.1261/rna.080861.125
 
 The reference databases built into the image have their own citations: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Acknowledgements
+
+Parts of the code, tests and documentation were written with the help of Claude, an AI assistant made by Anthropic. The authors directed and checked the work and are responsible for the code and its results.
 
 ## Questions and problems
 

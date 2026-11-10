@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-make_gene_symbols.py -- gene symbols and miRBase names for the features of a references BED (release 0.3.0, 3f).
+make_gene_symbols.py -- gene symbols and miRBase names for the features of a references BED (release 0.3.0).
 
 Writes docker/tables/<species>.gene_symbols.tsv (one row per BED feature that has a symbol or a miRBase name) and
 <species>.gene_symbols.provenance.md next to it. The pipeline adds the columns to *-featureclasses.csv and
@@ -309,7 +309,7 @@ def build(species, spec, files, references):
     os.makedirs(TABLES, exist_ok=True)
     out = os.path.join(TABLES, f'{species}.gene_symbols.tsv')
     with open(out, 'w', newline='') as f:
-        f.write(f'# Gene symbols and miRBase names of the features of {species}.bed (release 0.3.0, 3f); made by '
+        f.write(f'# Gene symbols and miRBase names of the features of {species}.bed (release 0.3.0); made by '
                 f'buildDB/{provenance["builder"]} ({VERSION}).\n')
         f.write(f'# references_bed_sha256: {provenance["references_bed_sha256"]}\n')
         f.write(f'# built_utc: {provenance["built_utc"]}\n')

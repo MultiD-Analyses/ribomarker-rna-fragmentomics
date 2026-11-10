@@ -2,8 +2,8 @@ sample,S2
 input_bam,results/levelA_se/alignments/S2.merged.bam
 output_bam,results/levelA_se/alignments/S2.bam
 mode,bed
-date,2026-10-05 10:34:23
-bed,test/levels/work/assets_a/human.bed
+date,2026-11-03 14:45:54
+bed,levels/assets_a/human.bed
 mapping_total,724
 mapping_mapped,713
 mapping_unmapped,11

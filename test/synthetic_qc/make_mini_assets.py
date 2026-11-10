@@ -45,7 +45,14 @@ TIERS = [
     ("bowtie2",      "mirna",     "human-star",     "mirna/human.star.fa",  ["Hsa-Mir-21_3p*"]),
     ("bowtie2",      "mirna",     "human-pre",      "mirna/human.pre.fa",   ["Hsa-Mir-21_pre"]),
     ("bowtie2",      "pirna",     "human-pirna",    "pirna/human-pirna.fa", ["piR-hsa-9"]),
-    ("bowtie2",      "gtf",       "human-ncrna",    "gtf/human.ncRNA.fa",   ["ENST00000786877|H19"]),
+    # the Ensembl ncRNA reference as four sub-references since 0.4.0 (buildDB/split_ncrna.py): one real
+    # record each for ncrna_mt, ncrna_snsno and ncrna_other; ncrna_lnc keeps H19 and gets SNHG1, the host lncRNA of
+    # SNORD22, which lies in it completely (126 nt; chosen 2026-11-03 from the Ensembl 116 ncRNA FASTA): sample S4
+    ("bowtie2",      "gtf",       "human-ncrna_mt",    "gtf/human.ncrna_mt.fa",    ["ENST00000386347|MT-TL1"]),
+    ("bowtie2",      "gtf",       "human-ncrna_snsno", "gtf/human.ncrna_snsno.fa", ["ENST00000384756|SNORD22"]),
+    ("bowtie2",      "gtf",       "human-ncrna_other", "gtf/human.ncrna_other.fa", ["ENST00000618786|RN7SL1"]),
+    ("bowtie2",      "gtf",       "human-ncrna_lnc",   "gtf/human.ncrna_lnc.fa",   ["ENST00000786877|H19",
+                                                                                    "ENST00000668048|SNHG1"]),
     ("bowtie2",      "gtf",       "human-cdna",     "gtf/human.cdna.fa",    ["ENST00000859953|ETS2",
                                                                              "ENST00001010609|BTG3",
                                                                              "ENST00001110240|MRPL39"]),

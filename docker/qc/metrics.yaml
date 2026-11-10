@@ -15,11 +15,11 @@
 #   caveat          what it is not / known limitations (optional)
 #   threshold       candidate threshold (optional; no threshold is applied)
 #
-# Placeholders in ids: {tier} = mapping index name, in the order the run used them
+# Placeholders in ids: {pass} = pass number (runs with --passes); {tier} = mapping index name, in the order the run used them
 # (logs/map.log, section 'databases'; e.g. univec_bt1, ribospike, human-rrna_bt1);
 # {rna_class} = RNA class id in *-classcounts.csv / rna_class in *-featureclasses.csv (class table, 0.3.0);
 # {len} = spike-in length 20, 30, 40, 50, 60; {type} = spike-in type T1–T4;
-# {n} = 1, 5, 10; {lane} = sequencing lane of the FASTQ file name (L001, L002, ...).
+# {n} = 1, 5, 10.
 #
 # Counts are stored as counts; the report computes percentages from denominator_id.
 # The denominator for "reads entering mapping" is map.total_in in both modes
@@ -80,7 +80,7 @@ metrics:
   definition: >-
     For every small-RNA contig namespace in the BED file, the species prefix
     (Homo_sapiens_ / Hsa-, Mus_musculus_ / Mmu-) must match the configured species (check C8).
-  caveat: "The mouse assets in docker/assets contain 261 Homo_sapiens tRNA rows and a human tRNA index."
+  caveat: "Before the mouse rebuild of 2026-10-08 the mouse references held 261 Homo_sapiens tRNA rows and a human tRNA index; this check reports any such contigs."
 
 - id: prov.class_tables
   section: prov
@@ -90,7 +90,7 @@ metrics:
   unit: "-"
   modes: [pe, se]
   source: "<run>/tables/rna_classes.tsv and tiers.csv (copies made by the Snakefile); the configuration keys rna_classes and tiers"
-  definition: "The RNA class table and the tier list the run used: file name, sha256, and whether each replaced the default (the code's table for the species; the references folder's <species>.dbpaths.csv); the gene-symbol table, if any, and whether it was applied (built for the references BED of the run)."
+  definition: "The RNA class table, the order of the references (an order file, or the references folder's <species>.dbpaths.csv) and, with --passes, the passes file the run used: file name, sha256, and whether each replaced the default (the code's table for the species; the references folder's <species>.dbpaths.csv; one pass with the standard settings); the gene-symbol table, if any, and whether it was applied (built for the references BED of the run)."
   caveat: "Runs made before 0.3.0 have no copies; for them the tables are the ones the Snakefile would choose now."
 
 - id: prov.tool_versions
@@ -143,16 +143,6 @@ metrics:
   modes: [pe]
   source: "trimmed/logs/<sample>.trim.cutadapt.json: read_counts.input"
   definition: "Read pairs processed by cutadapt."
-
-- id: trim.{lane}.pairs_in
-  section: trim
-  label: Read pairs in (lane)
-  kind: count
-  unit: read pairs
-  denominator_id: trim.pairs_in
-  modes: [pe]
-  source: "logs/lanes/<sample>.csv: reads of the lane's R1 file (rule merge_lanes)"
-  definition: "Read pairs of one sequencing lane; only for samples whose lane files the run command merged. The lanes of a sample add up to trim.pairs_in."
 
 - id: trim.r1_with_adapter
   section: trim
@@ -336,16 +326,6 @@ metrics:
   source: "trimmed/logs/<sample>.trim.cutadapt.json: read_counts.input"
   definition: "Reads (R1 only) processed by cutadapt."
 
-- id: trim.{lane}.reads_in
-  section: trim
-  label: Reads in (lane)
-  kind: count
-  unit: reads
-  denominator_id: trim.reads_in
-  modes: [se]
-  source: "logs/lanes/<sample>.csv: reads of the lane's R1 file (rule merge_lanes)"
-  definition: "Reads of one sequencing lane; only for samples whose lane files the run command merged. The lanes of a sample add up to trim.reads_in."
-
 - id: trim.reads_with_adapter
   section: trim
   label: Reads with adapter
@@ -419,7 +399,7 @@ metrics:
   kind: count
   unit: reads
   modes: [pe, se]
-  source: "first tier's map.{tier}.reads_in"
+  source: "first tier's map.{tier}.reads_in; with --passes the first cell's map.p1.{tier}.arrived"
   definition: "Reads entering the first mapping tier."
 
 - id: map.{tier}.reads_in
@@ -429,8 +409,9 @@ metrics:
   unit: reads
   denominator_id: map.total_in
   modes: [pe, se]
-  source: "alignments/logs/<sample>.{tier}.log: Bowtie 1 '# reads processed'; Bowtie 2 'N reads; of these'"
+  source: "alignments/logs/<sample>.p1.{tier}.log (<sample>.{tier}.log before 0.4.0): Bowtie 1 '# reads processed'; Bowtie 2 'N reads; of these'"
   definition: "Reads entering this tier (= unaligned reads of the previous tier, check C3)."
+  caveat: "Not written with --passes (a tier can be reached in several passes): see map.p{pass}.{tier}.arrived."
 
 - id: map.{tier}.aligned
   section: map
@@ -440,7 +421,7 @@ metrics:
   denominator_id: map.total_in
   modes: [pe, se]
   source: "same log: Bowtie 1 'reads with at least one reported alignment'; Bowtie 2 'aligned exactly 1 time' + 'aligned >1 times'"
-  definition: "Reads aligned in this tier; they are removed from later tiers. As a share of map.total_in this is the composition before multimapper/antisense removal."
+  definition: "Reads aligned in this tier (with --passes: the sum over the passes); they are removed from later tiers. As a share of map.total_in this is the composition before multimapper/antisense removal."
   caveat: "Log files can contain unrelated warning lines (e.g. '[WARNING] Failed to launch x86-64-v3 version'); parsers ignore them."
   threshold: "Q6 (tier univec_bt1), Q7 (rRNA tier)"
 
@@ -453,6 +434,7 @@ metrics:
   modes: [pe, se]
   source: "same log: Bowtie 1 'reads that failed to align'; Bowtie 2 'aligned 0 times'"
   definition: "Reads not aligned in this tier; passed to the next tier."
+  caveat: "Not written with --passes: see map.p{pass}.{tier}.unaligned."
 
 - id: map.{tier}.aligned_multi
   section: map
@@ -462,7 +444,7 @@ metrics:
   denominator_id: map.{tier}.aligned
   modes: [pe, se]
   source: "same log, Bowtie 2 tiers only: 'aligned >1 times'"
-  definition: "Reads with ≥ 2 reported alignments (up to the multimap limit, 100)."
+  definition: "Reads with ≥ 2 reported alignments (up to the multimap limit, 100); with --passes the sum over the passes."
   caveat: >-
     Not defined for Bowtie 1 tiers (UniVec, rRNA: -k 1, one alignment per read) and for the
     spike-in tier (Bowtie 2 with -k 1). Differs by design from assign.multi, which uses
@@ -475,9 +457,50 @@ metrics:
   unit: reads
   denominator_id: map.total_in
   modes: [pe, se]
-  source: "last tier's map.{tier}.unaligned"
+  source: "last tier's map.{tier}.unaligned; with --passes the last cell's unaligned + skipped_window reads"
   definition: "Reads not aligned in any tier (= assign.unmapped, check C4)."
   threshold: Q8
+
+# Cells: one reference in one pass (release 0.4.0; only in runs with --passes / passes:)
+- id: map.p{pass}.{tier}.arrived
+  section: map
+  label: Arrived (cell)
+  kind: count
+  unit: reads
+  denominator_id: map.total_in
+  modes: [pe, se]
+  source: "alignments/logs/<sample>.p{pass}.{tier}.log reads in + alignments/logs/<sample>.cells.tsv skipped_window (0 for a cell that was not run)"
+  definition: "Reads reaching this reference in this pass: aligned in no earlier cell (= unaligned + skipped_window of the previous cell, check C3)."
+
+- id: map.p{pass}.{tier}.aligned
+  section: map
+  label: Aligned (cell)
+  kind: count
+  unit: reads
+  denominator_id: map.p{pass}.{tier}.arrived
+  modes: [pe, se]
+  source: "alignments/logs/<sample>.p{pass}.{tier}.log, as map.{tier}.aligned"
+  definition: "Reads aligned in this cell; map.{tier}.aligned is their sum over the passes."
+
+- id: map.p{pass}.{tier}.unaligned
+  section: map
+  label: Unaligned (cell)
+  kind: count
+  unit: reads
+  denominator_id: map.p{pass}.{tier}.arrived
+  modes: [pe, se]
+  source: "alignments/logs/<sample>.p{pass}.{tier}.log, as map.{tier}.unaligned"
+  definition: "Reads given to the aligner in this cell and not aligned; passed to the next cell."
+
+- id: map.p{pass}.{tier}.skipped_window
+  section: map
+  label: Skipped by the length window (cell)
+  kind: count
+  unit: reads
+  denominator_id: map.p{pass}.{tier}.arrived
+  modes: [pe, se]
+  source: "alignments/logs/<sample>.cells.tsv"
+  definition: "Reads outside the cell's min_length/max_length; passed unchanged to the next cell (in the last cell: unmapped)."
 
 # ---------------------------------------------------------------- 5.5 assignment
 - id: assign.mapped
@@ -489,7 +512,7 @@ metrics:
   modes: [pe, se]
   source: "*-mappingstats.csv: Mapped"
   definition: "Reads aligned in any tier."
-  caveat: "Includes reads later removed by remove_multimap / remove_antisense (parseMappings.py lines 1100–1101)."
+  caveat: "Includes reads later removed by remove_multimap / remove_antisense (parseMappings.py, the mappingstats tally)."
 
 - id: assign.unmapped
   section: assign
@@ -523,6 +546,27 @@ metrics:
   definition: "Mapped reads with tied best alignment scores."
   caveat: "Unique and Multi exclude spike-in reads: assign.unique + assign.multi + spike.reads = assign.mapped (check C10; exact in level C, both modes, both samples)."
 
+- id: assign.antisense
+  section: assign
+  label: Antisense, maps once
+  kind: count
+  unit: reads
+  denominator_id: assign.mapped
+  modes: [pe, se]
+  source: "*-mappingstats.csv: Antisense"
+  definition: "Unique reads whose alignment lies on the opposite strand of its feature; counted whatever the remove_antisense setting (release 0.4.0)."
+  caveat: "A read without a feature (genome only) is sense. Antisense is judged against the highest-priority overlapping feature regardless of strand (see the known limitations in the user guide)."
+
+- id: assign.antisense_multi
+  section: assign
+  label: Antisense multimappers
+  kind: count
+  unit: reads
+  denominator_id: assign.mapped
+  modes: [pe, se]
+  source: "*-mappingstats.csv: AntisenseMulti"
+  definition: "Multi reads whose picked alignment (tie-break: sense before antisense before no feature) lies on the opposite strand of its feature; counted whatever the settings (release 0.4.0)."
+
 - id: assign.kept
   section: assign
   label: Kept
@@ -551,7 +595,7 @@ metrics:
   unit: reads
   denominator_id: assign.mapped
   modes: [pe, se]
-  source: "derived: assign.multi if remove_multimap is on, else 0"
+  source: "*-mappingstats.csv: Multi if remove_multimap is on, else 0"
   definition: "Reads removed because they align equally well to ≥ 2 loci (all Multi reads when remove_multimap is on, antisense multimappers included)."
   caveat: "Tiers aligned with one reported alignment (UniVec, rRNA, spike-ins) cannot produce Multi reads; their multimapping is invisible here."
 
@@ -562,12 +606,12 @@ metrics:
   unit: reads
   denominator_id: assign.mapped
   modes: [pe, se]
-  source: "derived: assign.removed_by_policy − assign.removed_multimap (remove_antisense on), else 0"
+  source: "*-mappingstats.csv: Antisense if remove_antisense is on, plus AntisenseMulti if remove_multimap is off; else 0"
   definition: "Reads removed because they lie antisense to their assigned feature; with remove_multimap on, only the antisense reads that map once (antisense multimappers are counted as multimappers)."
   caveat: >-
-    Derived as a difference, not counted directly (mappingstats has no antisense column);
-    any error in either term moves it. Antisense is judged against the highest-priority overlapping
-    feature regardless of strand (see the known limitations in the user guide).
+    Counted from mappingstats since release 0.4.0 (before: derived as a difference); check C11 compares
+    removed multimappers + removed antisense reads with assign.removed_by_policy. Antisense is judged against
+    the highest-priority overlapping feature regardless of strand (see the known limitations in the user guide).
 
 - id: assign.annotated
   section: assign
@@ -671,7 +715,7 @@ metrics:
   denominator_id: spike.reads
   modes: [pe, se]
   source: "*-readorigin.csv: row RiboSpike-Fragment"
-  definition: "Spike-in reads shorter than designed length − 2 nt (countRiboSpike.py line 146)."
+  definition: "Spike-in reads shorter than designed length − 2 nt (countRiboSpike.py)."
   caveat: "Called RiboSpike-Fragment in *-readorigin.csv and *-classcounts.csv (same count; RiboSpike-Short in typecounts.csv before 0.3.0)."
 
 - id: spike.{len}_{type}.reads

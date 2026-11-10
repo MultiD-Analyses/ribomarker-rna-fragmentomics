@@ -41,6 +41,7 @@ FILES = [
     'ribospike/results/{run}-ribospikeends_exact.csv',
 ]
 ABSOLUTE_REPO_PATH = re.compile(r'/\S*/' + re.escape(REPO.name))
+LEVEL_WORK = 'internal/levels/work/'      # the level runs' work folder: not in the public repository, so masked
 
 
 def main():
@@ -61,7 +62,7 @@ def main():
             for path in sorted(source.glob(pattern.format(run=run))):
                 copy = target / path.relative_to(source)
                 copy.parent.mkdir(parents=True, exist_ok=True)
-                copy.write_text(ABSOLUTE_REPO_PATH.sub('/repo', path.read_text()))
+                copy.write_text(ABSOLUTE_REPO_PATH.sub('/repo', path.read_text()).replace(LEVEL_WORK, 'levels/'))
                 written.add(copy)
                 n_files += 1
         shutil.copy(SHEETS / f'samples_{mode}.csv', FIXTURES / f'samples_{mode}.csv')

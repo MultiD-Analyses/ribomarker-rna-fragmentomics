@@ -17,9 +17,8 @@ import collections
 
 
 def read_feature_types(feature_file):
-    """{feature: class} and {feature: length_nt} keyed by the EXACT feature name
-    (featureclasses columns: feature, rna_class[, length_nt])."""
-    type_lookup, length_lookup = {}, {}
+    """{feature: class} keyed by the EXACT feature name (featureclasses columns: feature, rna_class[, length_nt])."""
+    type_lookup = {}
     with open(feature_file) as f:
         next(f, None)                                  # header
         for line in f:
@@ -28,12 +27,7 @@ def read_feature_types(feature_file):
                 continue
             parts = line.split(",")
             type_lookup[parts[0]] = parts[1]
-            if len(parts) > 2 and parts[2] != "":
-                try:
-                    length_lookup[parts[0]] = int(float(parts[2]))
-                except ValueError:
-                    pass
-    return type_lookup, length_lookup
+    return type_lookup
 
 
 def _keep_set(keep_classes):
@@ -89,7 +83,6 @@ def step_coverage(in_bam, out_bedgraph, type_lookup, keep_classes):
 
 def main():
     ap = argparse.ArgumentParser(description="Per-feature coverage of the parsed alignments (bedgraph).")
-    ap.add_argument("--step", default="coverage", choices=["coverage"])
     ap.add_argument("--input", required=True, help="parsed {sample}.bam")
     ap.add_argument("--output", required=True, help="output bedgraph")
     ap.add_argument("--featureclasses", required=True, help="*-featureclasses.csv")
@@ -97,7 +90,7 @@ def main():
                     help="comma-separated RNA class ids to keep, or 'all'")
     args = ap.parse_args()
 
-    type_lookup, _ = read_feature_types(args.featureclasses)
+    type_lookup = read_feature_types(args.featureclasses)
     step_coverage(args.input, args.output, type_lookup, args.keep_classes)
 
 

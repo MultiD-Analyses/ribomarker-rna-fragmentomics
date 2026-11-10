@@ -21,14 +21,13 @@ Design rules:
         univec    -> bowtie v1   name: univec_bt1        map_cmd 'bowtie'
         rrna      -> bowtie v1   name: {sp}-rrna_bt1      map_cmd 'bowtie'
         ribospike -> bowtie2     name: ribospike          map_cmd 'ribospikebt2'
-        trna/mirna/pirna/cdna/ncrna/genome -> bowtie2     map_cmd 'bowtie2'
+        trna/mirna/pirna/ncrna_*/cdna/genome -> bowtie2   map_cmd 'bowtie2' (ncrna_*: the four sub-references, 0.4.0)
 
 Requires on PATH: bowtie-build (v1), bowtie2-build, tar, gunzip.
 Python deps: pandas, biopython (Bio.SeqIO), pysam.
 """
 
 import os
-import sys
 import gzip
 import re
 import subprocess
@@ -37,6 +36,8 @@ from collections import defaultdict
 
 import pandas as pd
 from Bio import SeqIO
+
+from split_ncrna import SUB_REFERENCES, split_fasta   # the ncRNA split (release 0.4.0)
 
 NPAD = "N" * 10  # flanking pad added around every small-RNA reference sequence
 
@@ -390,17 +391,23 @@ def build_transcriptome(gtf_path, genome_fa, out_root, threads, dbprefix):
     nc.to_csv(nc_bed12, sep="\t", index=False, header=False)
     ncrna_bed, _ = _extract_fasta_from_bed12(nc_bed12, genome_fa, f"{out_file}.ncRNA.fa", "ncrna")
 
+    # since release 0.4.0 the ncRNA reference is four sub-references (split_ncrna.py): one index each,
+    # in the order of SUB_REFERENCES at the position of the former single ncrna index
+    def sub_fasta(sub):
+        return f"{out_file}.{sub}.fa"
+    split_fasta(f"{out_file}.ncRNA.fa", ncrna_bed, sub_fasta)
+
     log = f"{out_file}.bowtie-build.log"
     idx_cdna = os.path.join(d, f"{dbprefix}-cdna")
-    idx_ncrna = os.path.join(d, f"{dbprefix}-ncrna")
     _bowtie2_build(f"{out_file}.cdna.fa", idx_cdna, threads, log)
-    _bowtie2_build(f"{out_file}.ncRNA.fa", idx_ncrna, threads, log)
+    dbrows = []
+    for sub, _ in SUB_REFERENCES:
+        idx_sub = os.path.join(d, f"{dbprefix}-{sub}")
+        _bowtie2_build(sub_fasta(sub), idx_sub, threads, log)
+        dbrows.append(["bowtie2", _rel(out_root, idx_sub), "T"])
 
-    # dbpaths ORDER (matches production): ncrna before cdna
-    dbrows = [
-        ["bowtie2", _rel(out_root, idx_ncrna), "T"],
-        ["bowtie2", _rel(out_root, idx_cdna), "T"],
-    ]
+    # dbpaths ORDER (matches production): the ncRNA sub-references before cdna
+    dbrows.append(["bowtie2", _rel(out_root, idx_cdna), "T"])
     return dbrows, [cdna_bed, ncrna_bed, cdna_genome_bed]
 
 

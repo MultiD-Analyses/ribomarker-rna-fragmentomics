@@ -2,8 +2,8 @@ sample,S3
 input_bam,results/levelA_pe/alignments/S3.merged.bam
 output_bam,results/levelA_pe/alignments/S3.bam
 mode,bed
-date,2026-10-05 10:33:39
-bed,test/levels/work/assets_a/human.bed
+date,2026-11-03 14:44:31
+bed,levels/assets_a/human.bed
 mapping_total,80
 mapping_mapped,80
 mapping_unmapped,0

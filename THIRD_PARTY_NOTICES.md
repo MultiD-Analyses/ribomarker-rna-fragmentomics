@@ -38,8 +38,6 @@ The programs and libraries the pipeline calls directly:
 | Bowtie | 1.0.0 | Artistic License (upstream `LICENSE` at v1.0.0; the conda package records GPLv3) | https://github.com/BenLangmead/bowtie |
 | Bowtie 2 | 2.5.5 | GPL-3.0-or-later | https://github.com/BenLangmead/bowtie2 |
 | SAMtools | 1.23.1 | MIT | https://github.com/samtools/samtools |
-| seqtk | 1.5 | MIT | https://github.com/lh3/seqtk |
-| VSEARCH | 2.31.0 | GPL-3.0-or-later OR BSD-2-Clause | https://github.com/torognes/vsearch |
 | pigz | 2.8 | Zlib | https://zlib.net/pigz/ |
 | MultiQC | 1.35 | GPL-3.0-or-later | https://github.com/MultiQC/MultiQC |
 | pandas | 3.0.2 | BSD-3-Clause | https://pandas.pydata.org |
@@ -52,7 +50,7 @@ The programs and libraries the pipeline calls directly:
 
 Some packages in the image are under licences that require their source code to be available:
 
-- **GPL:** bowtie2 2.5.5 (GPL-3.0-or-later), multiqc 1.35 (GPL-3.0-or-later), vsearch 2.31.0 (GPL-3.0-or-later OR BSD-2-Clause), readline 8.3 (GPL-3.0-only), lzo 2.10 (GPL-2.0-or-later), ld_impl_linux-64 2.45.1 (GPL-3.0-only), perl 5.32.1 (GPL-1.0-or-later OR Artistic-1.0-Perl), freetype / libfreetype / libfreetype6 2.14.3 (GPL-2.0-only OR FTL), dbus 1.16.2 (AFL-2.1 OR GPL-2.0-or-later); the GCC runtime libraries libgcc, libgcc-ng, libgfortran, libgfortran5, libgomp, libstdcxx, libstdcxx-ng 15.2.0 (GPL-3.0-only WITH GCC-exception-3.1).
+- **GPL:** bowtie2 2.5.5 (GPL-3.0-or-later), multiqc 1.35 (GPL-3.0-or-later), readline 8.3 (GPL-3.0-only), lzo 2.10 (GPL-2.0-or-later), ld_impl_linux-64 2.45.1 (GPL-3.0-only), perl 5.32.1 (GPL-1.0-or-later OR Artistic-1.0-Perl), freetype / libfreetype / libfreetype6 2.14.3 (GPL-2.0-only OR FTL), dbus 1.16.2 (AFL-2.1 OR GPL-2.0-or-later); the GCC runtime libraries libgcc, libgcc-ng, libgfortran, libgfortran5, libgomp, libstdcxx, libstdcxx-ng 15.2.0 (GPL-3.0-only WITH GCC-exception-3.1).
 - **LGPL:** alsa-lib 1.2.15.3, cairo 1.18.4 (LGPL-2.1-only or MPL-1.1), graphite2 1.3.14, keyutils 1.6.3, libglib 2.88.1, libiconv 1.18, libntlm 1.8, libxcrypt 4.4.36, pyside6 6.11.0, qt6-main 6.11.0.
 
-The pipeline runs the GPL programs it uses (Bowtie, Bowtie 2, MultiQC, VSEARCH) as separate programs; it does not include their code in its own. Their source code is available from the projects listed above and from the package recipes of [conda-forge](https://github.com/conda-forge) and [bioconda](https://github.com/bioconda/bioconda-recipes), which record the exact source archive and checksum of each build. In addition, for at least three years after each release, MultiD Analyses AB will provide the complete corresponding source code of any GPL- or LGPL-licensed package in that release's image, on request and free of charge: open an issue in this repository.
+The pipeline runs the GPL programs it uses (Bowtie, Bowtie 2, MultiQC) as separate programs; it does not include their code in its own. Their source code is available from the projects listed above and from the package recipes of [conda-forge](https://github.com/conda-forge) and [bioconda](https://github.com/bioconda/bioconda-recipes), which record the exact source archive and checksum of each build. In addition, for at least three years after each release, MultiD Analyses AB will provide the complete corresponding source code of any GPL- or LGPL-licensed package in that release's image, on request and free of charge: open an issue in this repository.

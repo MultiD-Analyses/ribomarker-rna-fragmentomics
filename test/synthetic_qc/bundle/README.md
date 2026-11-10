@@ -6,11 +6,11 @@ Small, frozen test data with known truth, for testing any small-RNA / fragmentom
 
 | Path | Content |
 |---|---|
-| `fastq/` | Three samples (S1, S2; S3 holds only the exploratory categories C32–C35), paired-end, 76 nt, gzip. `samples_pe.csv` / `samples_se.csv` are sample sheets for the MultiD pipeline; single-end mode uses the R1 files only |
+| `fastq/` | Four samples (S1, S2; S3 holds only the exploratory categories C32–C35; S4, added in release 0.4.0, the categories C36–C39 of the four ncRNA sub-references, with its own random seed), paired-end, 76 nt, gzip. `samples_pe.csv` / `samples_se.csv` are sample sheets for the MultiD pipeline; single-end mode uses the R1 files only |
 | `references/` | The reference set the reads were designed against: one FASTA per mapping tier (`tiers.csv` gives the search order), `human.bed` with the annotation. Small-RNA and transcript sequences are padded with 10 N on both ends, as in the production assets; the genome tier is chromosome 21, positions 38,775,000–38,855,000 (0-based, Ensembl 116), named `21`, with BED coordinates relative to the window; two genome BED rows are synthetic (`SYNTH-SNORD-minus`, `SYNTH-LNC-edge`, see `../make_mini_assets.py`) |
 | `truth/reads_truth.tsv` | **Pipeline-independent truth, one row per read pair** (columns below) |
 | `truth/truth.tsv` | Expected values in the MultiD pipeline's own output tables, per mode and sample; table `qc` holds expected QC metric values (ids as in `docker/qc/metrics.yaml`), `tier_aligned_multi` reads with two or more reported alignments per tier, `exploratory` the S3 categories (reads per category, outcome not checked) |
-| `truth/categories.tsv` | The 35 read categories and their counts per sample |
+| `truth/categories.tsv` | The 39 read categories and their counts per sample |
 
 ## Read layout
 

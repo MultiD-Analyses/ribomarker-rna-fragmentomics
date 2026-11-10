@@ -13,7 +13,7 @@ SCRIPTS = REPO / 'docker' / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
 from toolRun import ToolError, run  # noqa: E402
 
-PIPELINE_SCRIPTS = ['trimAdapters.py', 'collapseReads.py', 'mapReads.py', 'parseMappings.py', 'countRiboSpike.py']
+PIPELINE_SCRIPTS = ['trimAdapters.py', 'mapReads.py', 'parseMappings.py', 'countRiboSpike.py']   # collapseReads.py: removed in 0.4.0
 
 
 def test_a_successful_command_passes(tmp_path):
@@ -55,11 +55,10 @@ def test_no_unchecked_os_system_left():
 
 
 def test_error_branches_exit_with_a_non_zero_status():
-    """sys.exit() without an argument exits with status 0, which Snakemake takes for success. The only one
-    left is collapseReads' normal end after subsampling."""
+    """sys.exit() without an argument exits with status 0, which Snakemake takes for success. None is left (the
+    last one, collapseReads' normal end after subsampling, went with collapseReads.py in 0.4.0)."""
     found = {name: sum(line.strip() == 'sys.exit()' for line in active_lines(name)) for name in PIPELINE_SCRIPTS}
-    assert found == {'trimAdapters.py': 0, 'collapseReads.py': 1, 'mapReads.py': 0,
-                     'parseMappings.py': 0, 'countRiboSpike.py': 0}
+    assert found == {'trimAdapters.py': 0, 'mapReads.py': 0, 'parseMappings.py': 0, 'countRiboSpike.py': 0}
 
 
 def test_cleanup_of_missing_files_does_not_fail():
@@ -69,12 +68,16 @@ def test_cleanup_of_missing_files_does_not_fail():
 
 
 def make_mapreads(tmp_path, monkeypatch, tiers):
+    import dbPaths
     import mapReads
+    import mapSchedule
     monkeypatch.setattr(mapReads.os, 'popen', lambda cmd: io.StringIO('tool version 1.0.0\n'))
     (tmp_path / 'samples.csv').write_text('S1,g,S1.fq.gz\n')
     (tmp_path / 'human.dbpaths.csv').write_text(tiers)
+    rows = mapSchedule.build(dbPaths.read_dbpaths(str(tmp_path / 'human.dbpaths.csv')), 'human', 100)
+    mapSchedule.write_schedule(rows, tmp_path / 'schedule.tsv')       # release 0.4.0: mapReads runs the schedule
     args = SimpleNamespace(samples=str(tmp_path / 'samples.csv'), dbs=str(tmp_path / 'human.dbpaths.csv'),
-                           threads=1, output=str(tmp_path / 'out'), multimap=100)
+                           schedule=str(tmp_path / 'schedule.tsv'), threads=1, output=str(tmp_path / 'out'))
     return mapReads.MapReads(args)
 
 

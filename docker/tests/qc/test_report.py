@@ -58,7 +58,7 @@ def test_read_fate_equals_collected_counts(reported):
     reads_in = 'trim.pairs_in' if mode == 'pe' else 'trim.reads_in'
     # #4: MultiQC's percentage switch, shown by report.js as "Values: Reads | Percentage"
     assert section['pconfig']['cpswitch'] is True and section['pconfig']['cpswitch_counts_label'] == 'Reads'
-    assert list(data) == ['S1', 'S2', 'S3']                 # sample-sheet order
+    assert list(data) == ['S1', 'S2', 'S3', 'S4']           # sample-sheet order
     for sample, row in data.items():
         for metric_id, value in row.items():
             assert value == long[(sample, metric_id)]
@@ -188,8 +188,10 @@ def button_classes(sections, report):
     import qcReport
     import refTables
     classes = refTables.ClassTable(refTables.default_table('human'), 'human')
-    present = [d['id'].split('.')[2] for d in report['samples']['S1']['distributions']
-               if d['id'].startswith('assign.class.') and d['id'].endswith('.length_hist')]
+    present = []                         # every sample's classes (0.4.0: Mt_tRNA and misc_RNA only in S4)
+    for sample in report['samples'].values():
+        present += [d['id'].split('.')[2] for d in sample['distributions'] if d['id'].startswith('assign.class.')
+                    and d['id'].endswith('.length_hist') and d['id'].split('.')[2] not in present]
     natural = [c for c in present if qcReport.natural(c, classes) and c != 'unmapped'
                and any((length_hist(report, s, c) or {}).get('n') for s in report['samples'])]
     names = {classes.display_name(c): [c] for c in natural}
@@ -272,7 +274,7 @@ def test_multimapping_bars_add_up_to_mapped(reported):
     for sample, row in sections['ribomarker_multimapping']['data'].items():
         values = {r['id']: r['value'] for r in report['samples'][sample]['metrics']}
         assert sum(row.values()) == values['assign.mapped']
-        assert row['removed: multimapper'] + row['removed: antisense, maps once'] == values['assign.removed_by_policy']
+        assert row['removed: multimapper'] + row['removed: antisense'] == values['assign.removed_by_policy']
 
 
 def test_table_columns_with_distinct_values():
@@ -346,6 +348,22 @@ def test_only_non_equal_checks_under_the_general_statistics(reported):
     listed = overview[overview.index('Checks that are not equal'):]
     listed = listed[:listed.index('</table>')]                               # the checks table only
     assert listed.count('<tr>') == 1 + 1                                    # header + the one check
+
+
+def test_a_run_with_an_order_or_passes_file_is_marked_non_default(reported):
+    """The line at the top of the Samples section names the experimental controls a run used (the
+    'replaced' flags of prov.class_tables); a default run has no such words."""
+    import qcReport
+    _, _, report, _, _, _ = reported
+    dictionary = yaml.safe_load((REPO / 'docker' / 'qc' / 'metrics.yaml').read_text(encoding='utf-8'))
+    assert 'Non-default' not in qcReport.status_line(qcReport.Run(report, dictionary))
+    tables = dict(report['provenance'].get('prov.class_tables') or {})
+    tables['passes'] = {'file': 'passes.tsv', 'sha256': '0' * 64, 'replaced': True}
+    tables['tiers'] = {'file': 'order.tsv', 'sha256': '0' * 64, 'replaced': True}
+    marked = dict(report, provenance=dict(report['provenance'], **{'prov.class_tables': tables}))
+    line = qcReport.status_line(qcReport.Run(marked, dictionary))
+    assert line.startswith('<b>Non-default settings (experimental):</b>')
+    assert '--tiers' in line and '--passes' in line
 
 
 def test_composition_tabs_leave_out_spike_ins_and_rrna(reported):
@@ -432,7 +450,8 @@ NC, PRE, UNANNOTATED = 'lncRNA and other ncRNA', 'genome: pre-mRNA, pre-tRNA', '
 # type is shown with the tier its features are in. Mt_rRNA and Mt_tRNA: provisional.
 TIER_GROUP_SPEC = {'univec_bt1': 'UniVec', 'ribospike': 'spike-ins', 'human-rrna_bt1': 'rRNA', 'human-trnas': 'tRNA',
                    'human-mirna': 'miRNA', 'human-star': 'miRNA', 'human-pre': 'miRNA', 'human-pirna': 'piRNA',
-                   'human-ncrna': NC, 'human-cdna': 'protein_coding', 'human-genome': 'genome'}   # split: tier_groups
+                   'human-ncrna': NC, 'human-cdna': 'protein_coding', 'human-genome': 'genome',   # split: tier_groups
+                   'human-ncrna_mt': NC, 'human-ncrna_snsno': NC, 'human-ncrna_other': NC, 'human-ncrna_lnc': NC}   # 0.4.0
 TYPE_GROUP_SPEC = {'RiboSpike-T1': 'spike-ins', 'RiboSpike-Fragment': 'spike-ins', 'rRNA': 'rRNA', 'tRNA': 'tRNA',
                    'miRNA': 'miRNA', 'pre-miRNA': 'miRNA', 'piRNA': 'piRNA', 'UniVec': 'UniVec',
                    'lncRNA': NC, 'snRNA': NC, 'snoRNA': NC, 'scaRNA': NC, 'misc_RNA': NC, 'Mt_rRNA': NC, 'Mt_tRNA': NC,
@@ -509,7 +528,7 @@ def test_composition_names_groups_that_gain_reads(reported):
     assert 'S1: lncRNA and other ncRNA' in description and 'S2: lncRNA and other ncRNA' in description
 
 
-# ----------------------------------------------------------------------------- 0.3.0 S4 (RealSeq review)
+# ----------------------------------------------------------------------------- 0.3.0 (RealSeq review)
 
 def qcReport_palette():
     import qcReport
@@ -522,15 +541,15 @@ def test_sample_table_from_the_users_sheet(reported):
     through MultiQC's highlighting; Martin 2026-10-26: chosen in the report, report_group is the first choice)."""
     _, run, report, _, sections, _ = reported
     table = sections['ribomarker_samples']
-    assert list(table['data']) == ['S1', 'S2', 'S3']
+    assert list(table['data']) == ['S1', 'S2', 'S3', 'S4']
     assert table['data']['S2'] == {'group': 'case', 'fastq_file': 'S2_R1_001.fastq.gz',
                                    'fastq_file2': 'S2_R2_001.fastq.gz', 'age': ''}
     assert table['headers']['fastq_file']['hidden'] and not table['headers']['age']['hidden']
     assert report['provenance']['prov.sample_sheet']['report_group'] == 'group'
     selector = re.search(r'<div class="rm-colour-by" data-config="([^"]+)"></div>', table['description'])
     config = json.loads(base64.b64decode(selector.group(1)))
-    assert config['samples'] == ['S1', 'S2', 'S3'] and config['first'] == 'group'
-    assert config['columns'] == {'group': ['control', 'case', 'control'], 'age': ['41', '(empty)', '38']}
+    assert config['samples'] == ['S1', 'S2', 'S3', 'S4'] and config['first'] == 'group'
+    assert config['columns'] == {'group': ['control', 'case', 'control', 'case'], 'age': ['41', '(empty)', '38', '(empty)']}
     assert config['palette'] == qcReport_palette() and 'ribomarker_counts_plot' in config['series_plots']
     # the colours are set in the report only: no static line colours, legend groups or highlight patterns
     assert 'colors' not in sections['ribomarker_lengths']['pconfig']
@@ -554,7 +573,7 @@ def test_without_a_sheet_the_samples_are_listed(tmp_path):
     assert 'prov.sample_sheet' not in report['provenance'] and not report['warnings'][1:]
     r = qcReport.Run(report, yaml.safe_load((REPO / 'docker' / 'qc' / 'metrics.yaml').read_text(encoding='utf-8')))
     table = qcReport.samples_table(r)
-    assert list(table['data']) == ['S1', 'S2', 'S3'] and table['data']['S1']['fastq_file'] == 'S1_R1_001.fastq.gz'
+    assert list(table['data']) == ['S1', 'S2', 'S3', 'S4'] and table['data']['S1']['fastq_file'] == 'S1_R1_001.fastq.gz'
     assert 'rm-colour-by' not in table['description']                           # no sheet columns: no selector
 
 
@@ -649,3 +668,81 @@ def test_report_scripts_match_the_pinned_multiqc():
     script = (REPO / 'docker' / 'qc' / 'report.js').read_text()
     for name in ('apply_mqc_highlights', 'mqc_plots', 'make_colorsamples_filter'):
         assert name in script
+
+
+def test_natural_classes_are_the_collectors():
+    """0.4.0 cleanup: the report's natural classes (read-length plots) are the collector's
+    (qcCollect.natural_classes, assign.natural_mean_length): no spike-ins (miND included), no UniVec."""
+    import qcCollect
+    import qcReport
+    import refTables
+    classes = refTables.ClassTable(refTables.default_table('human'), 'human')
+    candidates = ['miRNA', 'tRNA', 'genome_unannotated', 'miND', 'RiboSpike-T1', 'RiboSpike-Fragment',
+                  classes.class_of('UniVec')]
+    collector = qcCollect.Collector({'metrics': []}, 'pe', ['S1'])
+    collector.classes = classes
+    assert [c for c in candidates if qcReport.natural(c, classes)] == qcCollect.natural_classes(collector, candidates)
+    assert not qcReport.natural('miND', classes)
+
+
+def test_the_schedule_is_shown_with_the_tier_list(tmp_path):
+    """Release 0.4.0: tables/schedule.tsv in the section "Tiers and RNA classes", in the printout's words."""
+    import types
+    import mapSchedule
+    import qcReport
+    (tmp_path / 'tables').mkdir()
+    own = [('bowtie', 'univec/univec_bt1', 'T'), ('ribospikebt2', 'ribospike/ribospike', 'T'),
+           ('bowtie2', 'genome/human-genome', 'T')]
+    mapSchedule.write_schedule(mapSchedule.build(own, 'human', 100), tmp_path / 'tables' / 'schedule.tsv')
+    data = qcReport.tables_section(types.SimpleNamespace(out=str(tmp_path), classes=None))['data']
+    assert 'Mapping schedule' in data
+    for cells in (('1', 'univec_bt1', 'bowtie', 'standard'), ('2', 'ribospike', 'bowtie2', 'spike-in settings'),
+                  ('3', 'genome', 'bowtie2', 'standard, keeps unaligned')):
+        assert ''.join(f'<td>{c}</td>' for c in cells) in data, cells
+
+
+def test_a_schedule_with_passes_is_shown_with_one_column_per_pass(tmp_path):
+    """Release 0.4.0, passes: the report's schedule table has the printout's cells; '-' where a reference has no cell."""
+    import types
+    import mapSchedule
+    import qcReport
+    (tmp_path / 'tables').mkdir()
+    (tmp_path / 'human.dbpaths.csv').write_text('bowtie,univec/univec_bt1,T\nribospikebt2,ribospike/ribospike,T\n'
+                                                'bowtie2,genome/human-genome,T\n')
+    (tmp_path / 'passes.tsv').write_text('pass\tapplies_to\tmax_mismatches\tmin_length\tmax_length\tn_overhang\n'
+                                         '1\tall\t0\t-\t-\t1\n2\tgenome\tstandard\t20\t-\t-\n')
+    rows, _, problems, _ = mapSchedule.resolve(str(tmp_path / 'human.dbpaths.csv'), 'human', 100, None, True,
+                                               str(tmp_path / 'passes.tsv'))
+    assert problems == []
+    mapSchedule.write_schedule(rows, tmp_path / 'tables' / 'schedule.tsv')
+    run = types.SimpleNamespace(out=str(tmp_path), classes=None)
+    data = qcReport.tables_section(run)['data']
+    for cells in (('1', 'univec_bt1', 'bowtie', '0 mismatches', '-'), ('2', 'ribospike', 'bowtie2', 'spike-in settings', '-'),
+                  ('3', 'genome', 'bowtie2', '0 mismatches, &lt;=1 N', 'standard, 20+ nt, keeps unaligned')):
+        assert ''.join(f'<td>{c}</td>' for c in cells) in data, cells
+    assert qcReport.run_tiers(run) == ['univec_bt1', 'ribospike', 'human-genome']
+
+
+def test_the_report_follows_the_order_in_effect_when_pass_1_is_partial(tmp_path):
+    """Pass 1 has the genome only: the report's schedule table and tier list follow tables/order.tsv, not the order of
+    the first cells (review of 2026-11-05)."""
+    import types
+    import mapSchedule
+    import qcReport
+    (tmp_path / 'tables').mkdir()
+    (tmp_path / 'human.dbpaths.csv').write_text('bowtie,univec/univec_bt1,T\nbowtie2,gtf/human-cdna,T\n'
+                                                'bowtie2,genome/human-genome,T\n')
+    (tmp_path / 'passes.tsv').write_text('pass\tapplies_to\tmax_mismatches\tmin_length\tmax_length\tn_overhang\n'
+                                         '1\tgenome\t0\t-\t-\t-\n2\tall\tstandard\t-\t-\t-\n')
+    rows, _, problems, _ = mapSchedule.resolve(str(tmp_path / 'human.dbpaths.csv'), 'human', 100, None, False,
+                                               str(tmp_path / 'passes.tsv'))
+    assert problems == [] and rows[0]['reference'] == 'genome'
+    mapSchedule.write_schedule(rows, tmp_path / 'tables' / 'schedule.tsv')
+    mapSchedule.write_order(rows, tmp_path / 'tables' / 'order.tsv',
+                            mapSchedule.order_in_effect(str(tmp_path / 'human.dbpaths.csv'), 'human'))
+    run = types.SimpleNamespace(out=str(tmp_path), classes=None)
+    assert qcReport.run_tiers(run) == ['univec_bt1', 'human-cdna', 'human-genome']
+    data = qcReport.tables_section(run)['data']
+    for cells in (('1', 'univec_bt1', 'bowtie', '-', 'standard'), ('2', 'cdna', 'bowtie2', '-', 'standard'),
+                  ('3', 'genome', 'bowtie2', '0 mismatches', 'standard, keeps unaligned')):
+        assert ''.join(f'<td>{c}</td>' for c in cells) in data, cells

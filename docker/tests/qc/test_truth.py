@@ -43,10 +43,10 @@ def expected_metrics(mode, sample, tiers):
 
     for tier in tiers:                                   # a tier without a truth row gets no reads
         expected[f'map.{tier}.aligned'] = truth.get(('tier_aligned', tier), 0)
-    expected['map.final_unaligned'] = truth[('tier_aligned', 'final_unaligned')]
+    expected['map.final_unaligned'] = truth.get(('tier_aligned', 'final_unaligned'), 0)   # a missing row is 0 (S4)
 
     for column in ('Mapped', 'Unmapped', 'Unique', 'Multi'):
-        expected[f'assign.{column.lower()}'] = truth[('mappingstats', column)]
+        expected[f'assign.{column.lower()}'] = truth.get(('mappingstats', column), 0)
     type_counts = {key: value for (table, key), value in truth.items() if table == 'classcounts'}
     kept = sum(value for key, value in type_counts.items() if key != 'unmapped')
     expected['assign.kept'] = kept
@@ -109,7 +109,7 @@ def test_metrics_equal_truth(collected):
     for sample in report['samples']:
         tiers = [record['id'].split('.')[1] for record in report['samples'][sample]['metrics']
                  if record['id'].startswith('map.') and record['id'].endswith('.reads_in')]
-        assert len(tiers) == 11
+        assert len(tiers) == 14                          # 0.4.0: the ncRNA reference is four tiers
         mismatches = []
         expected = expected_metrics(mode, sample, tiers) | expected_aligned_multi(mode, sample, found)
         for metric_id, value in expected.items():

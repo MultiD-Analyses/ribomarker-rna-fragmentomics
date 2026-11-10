@@ -23,3 +23,14 @@ Built: 2026-07-07T11:49:06Z  |  builder: buildDB_v1.py (sha256 `e51e855bb26b...`
 - python: 3.13.13
 - bowtie-build: bowtie-build version 1.0.0
 - bowtie2-build: bowtie2-build-s version 2.5.5
+
+## ncRNA split (release 0.4.0)
+
+2026-11-03T11:44:40Z: `split_ncrna.py` (sha256 `4d426a3b234a`), bowtie2-build-s version 2.5.5. The Ensembl ncRNA reference `gtf/human.ncRNA.fa` (sha256 `dfcd632595d8`) cut into four, every record unchanged and in its order:
+
+| Sub-reference | Records | Biotypes |
+|---|---|---|
+| `gtf/human-ncrna_mt` | 24 | Mt_tRNA 22, Mt_rRNA 2 |
+| `gtf/human-ncrna_snsno` | 2720 | snRNA 1837, snoRNA 832, scaRNA 51 |
+| `gtf/human-ncrna_other` | 1324 | misc_RNA 1282, rRNA 42 |
+| `gtf/human-ncrna_lnc` | 34997 | lncRNA 34997 |

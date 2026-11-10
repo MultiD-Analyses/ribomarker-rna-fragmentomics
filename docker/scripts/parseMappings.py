@@ -7,20 +7,15 @@ import sys
 import pandas as pd
 import os
 from datetime import datetime
-import warnings
 from multiprocessing import Pool
 from toolRun import run  # stops on a failed tool
 import refTables  # the RNA class table (release 0.3.0)
 import pysam
-from collections import defaultdict, deque, Counter, defaultdict
+from collections import defaultdict, deque, Counter
 import tqdm
 import numpy as np
-np.random.seed(42)
 import re
-import random
-random.seed(42)
 from numba import jit
-warnings.filterwarnings("ignore")
 
 FEATURE_SUFFIXES = ('_multimap', '_antisense', '_5p', '_3p', '_internal', '_whole')
 
@@ -29,7 +24,7 @@ def base_feature(name, known):
     """The BED feature a counted feature belongs to: parseMappings suffixes feature names (_5p/_3p/_internal/_whole,
     _multimap, _antisense). A suffix is removed only while the name is not a BED feature itself: MirGeneDB arms are
     named ..._5p / ..._3p in the BED and keep that suffix (before 0.3.0 it was stripped, so 286 of 561 miRNA features
-    of S3 had no length; release 0.3.0, 3h). known: the BED feature names."""
+    of sample S3 had no length; release 0.3.0). known: the BED feature names."""
     def strip(name):
         changed = True
         while changed and name not in known:
@@ -70,7 +65,7 @@ def read_gene_symbols(path):
 
 
 def add_gene_symbols(featuretypes, bed_path, symbols_path):
-    """Attach the gene-symbol columns (release 0.3.0, 3f) by base feature. The table is used only if it was built
+    """Attach the gene-symbol columns (release 0.3.0) by base feature. The table is used only if it was built
     for this BED (sha256 in its header); otherwise the columns stay empty and a warning is printed."""
     columns, symbols, bed_sha256 = read_gene_symbols(symbols_path)
     with open(bed_path, 'rb') as f:
@@ -157,14 +152,12 @@ class ParseMappings(object):
         # ranks of overlapping features and the labels with positional suffixes come from the class table
         self.classes = refTables.ClassTable(args.rna_classes or refTables.default_table('default'), 'default')
         self.position_labels = self.classes.position_labels()
-        # reads without a feature on a UniVec contig are the class UniVec (release 0.3.0, 3g); the contigs come from
+        # reads without a feature on a UniVec contig are the class UniVec (release 0.3.0); the contigs come from
         # the contig-to-tier map of the run (Snakefile rule run_tables, dbPaths.write_contig_tiers)
         self.univec_contigs = read_univec_contigs(args.contig_tiers) if args.contig_tiers else set()
 
         self.sampleinfo = pd.read_csv(self.args.samples, sep=',', names=['sample', 'group', 'fastq'])
         self.samplelist = self.sampleinfo['sample'].tolist()
-        self.sampleDict = dict(zip(self.sampleinfo['sample'], self.sampleinfo['group']))
-        self.fastqDict = dict(zip(self.sampleinfo['sample'], self.sampleinfo['fastq']))
 
         self.logdata = {}
         self.logdata['module'] = 'parseMappings'
@@ -172,59 +165,13 @@ class ParseMappings(object):
         self.logdata['samples'] = self.samplelist
         self.logdata['threads'] = self.args.threads
         self.logdata['output'] = self.args.output
-        self.logdata['mode'] = 'bed' if self.args.bed else 'best'
-        if self.args.bed:
-            self.logdata['bed'] = self.args.bed
-            self.logdata['mode'] = 'bed'
-        else:
-            self.logdata['mode'] = 'best'
+        self.logdata['mode'] = 'bed'
+        self.logdata['bed'] = self.args.bed
         self.logdata['tools'] = []
         self.logdata['commands'] = []
         self.logdata['input_bams'] = {}
 
         return
-
-    def partition_read_counts(self, reads):
-        '''
-        This function partitions the read counts based on the number of alignments.
-        '''
-        def partition_number(n, parts):
-            # Divide the number by parts and calculate the integer part
-            quotient = n // parts
-            # Calculate the remainder
-            remainder = n % parts
-            # Create the partition
-            partition = [quotient] * parts
-            # Distribute the remainder across the first 'remainder' parts
-            for i in range(remainder):
-                partition[i] += 1
-            return partition
-        ## Get the read name
-        read_name = reads[0].query_name
-        ## get the read count
-        read_count = int(read_name.split(';size=')[1])
-        ## get the number of alignments
-        num_alignments = len(reads)
-
-        count_partitions = partition_number(read_count, num_alignments)
-
-        return count_partitions
-
-    def get_read_count(self, read_name):
-        '''
-        This function gets the read count from the read name if the reads are collapsed.
-        '''
-        if self.args.collapse == True:
-            read_count = int(read_name.split(';size=')[1])
-        elif self.args.collapse == False:
-            read_count = int(1)
-
-        # if ';size=' in read_name:
-        #     read_count = int(read_name.split(';size=')[1])
-        # else:
-        #     read_count = int(1)
-
-        return read_count
 
     def pick_bed_alignment(self, read_mappings_dict, read_name, gD):
         '''
@@ -268,14 +215,7 @@ class ParseMappings(object):
                 barcode = barcodes[best_index]
                 strandedness = assign_strandedness_tag(read, strand, barcode, mappability)
                 return read, mappability, barcode, strandedness
-            elif len(highest_alignscore_indices) > 1 and self.args.collapse == True:
-                mappability = 'Multi'
-                reads = [alignments[i] for i in highest_alignscore_indices]
-                strands = [strands[i] for i in highest_alignscore_indices]
-                barcodes = [barcodes[i] for i in highest_alignscore_indices]
-                strandednesses = [assign_strandedness_tag(reads[i], strands[i], barcodes[i], mappability) for i in range(len(highest_alignscore_indices))]
-                return reads, mappability, barcodes, strandednesses
-            elif len(highest_alignscore_indices) > 1 and self.args.collapse == False:
+            else:   # several alignments with the best score
                 # Resolve ties deterministically and independently of alignment order:
                 # score, then strand, then biotype rank, then genomic position, then barcode.
                 def tie_key(i):
@@ -311,29 +251,14 @@ class ParseMappings(object):
 
             read_length = len(query_sequence)
             
+            # an antisense read keeps its class and its feature gets _antisense, for every class (release 0.4.0;
+            # before: class antisense, and protein_coding / pre-mRNA not tagged)
+            if strandedness == 'antisense':
+                feature = feature + '_antisense'
+
             if biotype in self.position_labels:     # tRNA, Mt_tRNA, snRNA, snoRNA (class table: positions = yes)
-
-                if strandedness == 'antisense':
-                    biotype = 'antisense'
-                    feature = feature + '_antisense'
-                else:
-                    feature = feature
-
                 feature = feature + position_suffix(read_start, read_end, start, end, strand)
 
-            elif biotype in ['protein_coding', 'pre-mRNA']:
-                mappability = read.get_tag('XF').split('|')[-1]
-                if mappability == 'Unique':
-                    biotype = biotype
-                    feature = feature
-
-            else:
-                if strandedness == 'antisense':
-                    biotype = 'antisense'
-                    feature = feature + '_antisense'
-                else:
-                    feature = feature
-                    
             # Flag every multimapping read, for all biotypes — so multimappers
             # can be separated or removed reliably downstream.
             if read.get_tag('XF').split('|')[-1] == 'Multi':
@@ -347,15 +272,9 @@ class ParseMappings(object):
             read_feature_dict[feature] += count_value
             read.set_tag('CS', f"{feature}")
 
-            if read_feature_distinctseqs_dict[feature][query_sequence] is None:
-                read_feature_distinctseqs_dict[feature][query_sequence] = count_value
-            else:
-                read_feature_distinctseqs_dict[feature][query_sequence] += count_value
+            read_feature_distinctseqs_dict[feature][query_sequence] += count_value
 
-            if read_biotypes_distinctseqs_dict[biotype][query_sequence] is None:
-                read_biotypes_distinctseqs_dict[biotype][query_sequence] = count_value
-            else:
-                read_biotypes_distinctseqs_dict[biotype][query_sequence] += count_value
+            read_biotypes_distinctseqs_dict[biotype][query_sequence] += count_value
 
             return read, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict
 
@@ -370,10 +289,7 @@ class ParseMappings(object):
             read_length_dict[biotype][read_length] += count_value
             read.set_tag('CS', f"other")
 
-            if read_biotypes_distinctseqs_dict[biotype][query_sequence] is None:
-                read_biotypes_distinctseqs_dict[biotype][query_sequence] = count_value
-            else:
-                read_biotypes_distinctseqs_dict[biotype][query_sequence] += count_value
+            read_biotypes_distinctseqs_dict[biotype][query_sequence] += count_value
 
             return read, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict
 
@@ -382,11 +298,7 @@ class ParseMappings(object):
         Assigns reads to bed features.
         '''
 
-        if self.args.bampath == '':
-            bampath = f'{self.args.output}/alignments/'
-        else:
-            if self.args.bampath.endswith('/') is False:
-                bampath = self.args.bampath + '/'
+        bampath = self.args.bampath.rstrip('/') + '/'      # main() sets the default
 
         try:
             bed = pd.read_csv(self.args.bed, sep='\t', header=None, names=['chrom', 'start', 'end', 'feature', 'biotype', 'strand'])
@@ -409,9 +321,6 @@ class ParseMappings(object):
         featuretypeD = dict(zip(uniquefeatures['feature'], uniquefeatures['biotype']))
         del uniquefeatures
 
-        ## get the contigs
-        contigs = {contig:1 for contig in bed['chrom'].unique()}
-
         ## rank of each label from the class table (labels missing from it get rank 10, as before 0.3.0)
         genetype_hierarchy = self.classes.rank_map(biotypes + ['unannotated'])
 
@@ -421,32 +330,27 @@ class ParseMappings(object):
         ## group the bed file by chromosome
         bed = bed.groupby('chrom')
 
-        bed_strand_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {'start': list(), 'end': list(), 'feature': list(), 'biotype': list(), 'strand': list()}))))
-        
-        ## create a dictionary to store the annotations for each chromosome so that they can be accessed quickly
+        ## the annotations of each chromosome (both strands, in rank order), for a quick lookup
+        bed_dict = {}
         for chrom, group_df in bed:
-            for strand in ['+', '-']:
-                bed_strand_dict[chrom][strand] = {
-                    'start': group_df['start'].to_numpy(),
-                    'end': group_df['end'].to_numpy(),
-                    'feature': group_df['feature'].tolist(),
-                    'biotype': group_df['biotype'].tolist(),
-                    'strand': group_df['strand'].tolist(),
-                    'barcode': group_df['barcode'].tolist()
-                }
+            bed_dict[chrom] = {
+                'start': group_df['start'].to_numpy(),
+                'end': group_df['end'].to_numpy(),
+                'feature': group_df['feature'].tolist(),
+                'biotype': group_df['biotype'].tolist(),
+                'strand': group_df['strand'].tolist(),
+                'barcode': group_df['barcode'].tolist()
+            }
 
         ## add the other biotypes to the biotypes list for intergenic mapping reads
         biotypes = biotypes + ['unannotated']
 
         if os.path.exists(f'{bampath}{sample}.merged.bam') is True:
             bam = pysam.AlignmentFile(f'{bampath}{sample}.merged.bam', 'rb')
-            # self.logdata['input_bams'].append([sample, f'{bampath}{sample}.merged.bam'])
             sample_logdata = {}
             sample_logdata['sample'] = sample
             sample_logdata['input_bam'] = f'{bampath}{sample}.merged.bam'
             sample_logdata['output_bam'] = f'{bampath}{sample}.bam'
-            if self.args.unmapped:
-                sample_logdata['unmapped_bam'] = f'{bampath}{sample}.unmapped.bam'
             sample_logdata['mode'] = 'bed'
             sample_logdata['date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             sample_logdata['bed'] = self.args.bed
@@ -458,10 +362,6 @@ class ParseMappings(object):
         if os.path.exists(f'{bampath}{sample}.unsorted.bam'):
             os.remove(f'{bampath}{sample}.unsorted.bam')
 
-        if self.args.unmapped:
-            if os.path.exists(f'{bampath}{sample}.unmapped.bam'):
-                os.remove(f'{bampath}{sample}.unmapped.bam')
-
         ##create new bam file to write out reads that pass filters
         try:
             output_bam = pysam.AlignmentFile(f'{bampath}{sample}.unsorted.bam', 'wb', template=bam)
@@ -469,38 +369,22 @@ class ParseMappings(object):
             print(f'Could not write to {bampath}{sample}.unsorted.bam. Check the path and rerun the script.')
             sys.exit(1)
 
-        if self.args.unmapped:
-            try:
-                unmapbam = pysam.AlignmentFile(f'{bampath}{sample}.unmapped.bam', 'wb', template=bam)
-                unmap_sequences = defaultdict(lambda: 0)
-            except FileNotFoundError:
-                print(f'Could not write to {bampath}{sample}.unmapped.bam. Check the path and rerun the script.')
-                sys.exit(1)
     
-        ## check if the reads are collapsed, on a SEPARATE file handle: reading the first
-        ## record of `bam` here made the main loop skip it, because fetch(until_eof=True)
-        ## continues from the current file position (1 read lost per sample; fixed 2026-09-29)
-        with pysam.AlignmentFile(f'{bampath}{sample}.merged.bam', 'rb') as peek:
-            first_read = next(peek.fetch(until_eof=True), None)
-        if first_read is not None:
-            self.args.collapse = ';size=' in first_read.query_name
-
         ## define spike in regex
         ribospike_regex = r"SR_(\d+)_4N-T(\d+(\.\d+)?)"
-        ribospike_dict = defaultdict(int)
 
         ## create a dictionary to store the read mappings
 
-        read_mappability_dict = {'Mapped':0, 'Unmapped':0, 'Unique':0, 'Multi':0}
+        # Antisense / AntisenseMulti: Unique / Multi reads whose (picked) alignment is antisense (release 0.4.0)
+        read_mappability_dict = {'Mapped':0, 'Unmapped':0, 'Unique':0, 'Multi':0, 'Antisense':0, 'AntisenseMulti':0}
         read_mappings_dict = defaultdict(lambda: {'alignments': deque(), 'alignmentscores': deque(), 'annotations': deque(), 'biotypes': deque(), 'strand': deque(), 'barcodes': deque()})
 
         full_cov = defaultdict(lambda: {'depth': Counter(), 'mm': Counter(), 'biotype': None})
 
         read_feature_dict = defaultdict(lambda: 0)
         read_biotype_dict = defaultdict(lambda: 0)
-        # lengths 0-300 present from the start (column order); longer reads are added (3c: no limit at 300)
+        # lengths 0-300 present from the start (column order); longer reads are added (release 0.3.0: no limit at 300)
         read_length_dict = defaultdict(lambda: defaultdict(int, {i: 0 for i in range(0, 301)}))
-        # read_mappability_dict = defaultdict(lambda: {'Unique':0, 'Multi':0})
         read_feature_distinctseqs_dict = defaultdict(lambda: defaultdict(int))
         read_biotypes_distinctseqs_dict = defaultdict(lambda: defaultdict(int))
 
@@ -516,30 +400,16 @@ class ParseMappings(object):
                 read_contig = read.reference_name
                 read_length = len(read.query_sequence)
 
-                if read.is_unmapped:
-                    count_value = self.get_read_count(read_name)
+                if read.is_unmapped or read_length < 15:      # the 15-nt floor (the shortest insert trimming keeps)
+                    count_value = 1
                     read_mappability_dict['Unmapped'] += count_value
                     read_biotype_dict['unmapped'] += count_value
                     read_length_dict['unmapped'][read_length] += count_value
                     output_bam.write(read)
-                    if self.args.unmapped:
-                        unmapbam.write(read)
-                        unmap_sequences[read.query_sequence] += count_value
-                    continue
-
-                if read_length < 15:
-                    count_value = self.get_read_count(read_name)
-                    read_mappability_dict['Unmapped'] += count_value
-                    read_biotype_dict['unmapped'] += count_value
-                    read_length_dict['unmapped'][read_length] += count_value
-                    output_bam.write(read)
-                    if self.args.unmapped:
-                        unmapbam.write(read)
-                        unmap_sequences[read.query_sequence] += count_value
                     continue
 
                 if '#miND' in read_contig:
-                    count_value = self.get_read_count(read_name)
+                    count_value = 1
                     read_mappability_dict['Mapped'] += count_value
                     feature = read_contig.split('.')[0].replace('#miND-', 'miND_')
                     biotype = 'miND'
@@ -552,7 +422,7 @@ class ParseMappings(object):
 
                 ## check for spike in reads
                 if re.search(ribospike_regex, read_contig):
-                    count_value = self.get_read_count(read_name)
+                    count_value = 1
                     ribospike = re.search(ribospike_regex, read_contig).group(1)
                     sequence = read.query_sequence
                     read_length = len(sequence)
@@ -571,7 +441,6 @@ class ParseMappings(object):
                         ribospike = f'RiboSpike-{ribospike}-{typespike}'
                         biotype = f'RiboSpike-{typespike}'
                         featuretypeD[ribospike] = biotype
-                        ribospike_dict[ribospike] += count_value
                         read_feature_dict[ribospike] += count_value
                         read_biotype_dict[biotype] += count_value
                         read_length_dict[biotype][read_length] += count_value
@@ -585,42 +454,22 @@ class ParseMappings(object):
                     if current_read_name is not None:
                         ## get the best alignment for the read
                         best_read, mapping, barcode, strandedness  = self.pick_bed_alignment(read_mappings_dict, current_read_name, genetype_hierarchy)
-                        self._accumulate_full_coverage(read_mappings_dict[current_read_name], mapping, self.get_read_count(current_read_name), full_cov)
+                        self._accumulate_full_coverage(read_mappings_dict[current_read_name], mapping, 1, full_cov)
 
                         ## check if the read is unique or multi-mapped
-                        if mapping == 'Multi' and self.args.collapse == True:
-
-                            count_values = self.partition_read_counts(best_read)
-                            for cdx, count_value in enumerate(count_values):
-                                if count_value == 0:
-                                    continue
-                                curr_best_read = best_read[cdx]
-                                ## set the size= in the read name to the count value
-                                oldname = curr_best_read.query_name
-                                newname = oldname.split(';size=')[0] + f';size={count_value}'
-                                curr_best_read.query_name = newname
-                                curr_barcode = barcode[cdx]
-                                curr_strandedness = strandedness[cdx]
-                                # remove-at-source: same gate as the else branch, applied per partition
-                                remove = (self.args.remove_multimap and mapping == 'Multi') or (self.args.remove_antisense and curr_strandedness == 'antisense')
-                                if not remove:
-                                    curr_best_read, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict = self.generate_metrics_bed_distinct(curr_best_read, curr_barcode, curr_strandedness, bed_barcode_dict, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, count_value, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict)
-                                    output_bam.write(curr_best_read)
-                                # tally OUTSIDE the gate on purpose: removed multimap/antisense reads still
-                                # count toward the mappingstats rate (design Z). Do NOT move these inside `if not remove`.
-                                read_mappability_dict['Mapped'] += count_value
-                                read_mappability_dict[mapping] += count_value
-
-                        else:
-                            count_value = self.get_read_count(current_read_name)
-                            # remove-at-source: skip counting + BAM write for multimap/antisense when requested
-                            remove = (self.args.remove_multimap and mapping == 'Multi') or (self.args.remove_antisense and strandedness == 'antisense')
-                            if not remove:
-                                best_read, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict = self.generate_metrics_bed_distinct(best_read, barcode, strandedness, bed_barcode_dict, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, count_value, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict)
-                                output_bam.write(best_read)
-                            read_mappability_dict['Mapped'] += count_value
-                            read_mappability_dict[mapping] += count_value
-                            
+                        count_value = 1
+                        # remove-at-source: skip counting + BAM write for multimap/antisense when requested
+                        remove = (self.args.remove_multimap and mapping == 'Multi') or (self.args.remove_antisense and strandedness == 'antisense')
+                        if not remove:
+                            best_read, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict = self.generate_metrics_bed_distinct(best_read, barcode, strandedness, bed_barcode_dict, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, count_value, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict)
+                            output_bam.write(best_read)
+                        # tally OUTSIDE the gate on purpose: removed multimap/antisense reads still
+                        # count toward the mappingstats rate (design Z). Do NOT move these inside `if not remove`.
+                        read_mappability_dict['Mapped'] += count_value
+                        read_mappability_dict[mapping] += count_value
+                        if strandedness == 'antisense':
+                            read_mappability_dict['Antisense' if mapping == 'Unique' else 'AntisenseMulti'] += count_value
+                        
                         read_mappings_dict.pop(current_read_name)
 
                     current_read_name = read_name
@@ -634,47 +483,17 @@ class ParseMappings(object):
                 if 'SMART' in sample:
                     read_strand = '+' if read_strand == '-' else '-'
 
-                if contigs.get(chr) == 1:
-
-                    pos_feature, pos_biotype, pos_strand, pos_barcode = self.find_feature(read_start, read_end, read_strand, bed_strand_dict[chr]['+']['start'], bed_strand_dict[chr]['+']['end'], bed_strand_dict[chr]['+']['biotype'], bed_strand_dict[chr]['+']['feature'], bed_strand_dict[chr]['+']['strand'], bed_strand_dict[chr]['+']['barcode'])
-                    neg_feature, neg_biotype, neg_strand, neg_barcode = self.find_feature(read_start, read_end, read_strand, bed_strand_dict[chr]['-']['start'], bed_strand_dict[chr]['-']['end'], bed_strand_dict[chr]['-']['biotype'], bed_strand_dict[chr]['-']['feature'], bed_strand_dict[chr]['-']['strand'], bed_strand_dict[chr]['-']['barcode'])
-
-                    if pos_feature == 'unannotated' and neg_feature == 'unannotated':
-                        feature, biotype, strand, barcode = 'unannotated', 'unannotated', -2, 'unannotated'
-
-                    elif pos_feature == 'unannotated' and neg_feature != 'unannotated':
-                        feature, biotype, strand, barcode = neg_feature, neg_biotype, neg_strand, neg_barcode
-                    
-                    elif pos_feature != 'unannotated' and neg_feature == 'unannotated':
-                        feature, biotype, strand, barcode = pos_feature, pos_biotype, pos_strand, pos_barcode
-
-                    elif pos_feature != 'unannotated' and neg_feature != 'unannotated':
-                        ## go with the highest strand
-                        if pos_strand > neg_strand:
-                            feature, biotype, strand, barcode = pos_feature, pos_biotype, pos_strand, pos_barcode
-                        elif pos_strand < neg_strand:
-                            feature, biotype, strand, barcode = neg_feature, neg_biotype, neg_strand, neg_barcode
-                        elif pos_strand == neg_strand:
-                            ## go with higher based on the genetype_hierarchy
-                            if genetype_hierarchy[pos_biotype] > genetype_hierarchy[neg_biotype]:
-                                feature, biotype, strand, barcode = pos_feature, pos_biotype, pos_strand, pos_barcode
-                            elif genetype_hierarchy[pos_biotype] < genetype_hierarchy[neg_biotype]:
-                                feature, biotype, strand, barcode = neg_feature, neg_biotype, neg_strand, neg_barcode
-                            elif genetype_hierarchy[pos_biotype] == genetype_hierarchy[neg_biotype]:
-                                # deterministic: pick the lexicographically smaller barcode
-                                options = [(pos_feature, pos_biotype, pos_strand, pos_barcode),
-                                        (neg_feature, neg_biotype, neg_strand, neg_barcode)]
-                                feature, biotype, strand, barcode = min(options, key=lambda o: o[3])
-                            
-                else:
-                    # print(read_contig)
+                if chr in bed_dict:
+                    d = bed_dict[chr]
+                    feature, biotype, strand, barcode = self.find_feature(read_start, read_end, read_strand, d['start'], d['end'], d['biotype'], d['feature'], d['strand'], d['barcode'])
+                else:      # a contig without annotation must not reach find_region
                     feature, biotype, strand, barcode = 'unannotated', 'unannotated', -2, 'unannotated'
 
                 read_mappings_dict[read_name]['alignments'].append(read)
                 ## Get the alignment score
                 try:
                     alignment_score = read.get_tag('AS') ## Get the alignment score; bowtie2
-                except:
+                except KeyError:                       # Bowtie 1 records have no AS tag
                     alignment_score = read.get_tag('NM') * -1 ## Get the alignment score; bowtie
 
                 read_mappings_dict[read_name]['alignmentscores'].append(alignment_score)
@@ -686,50 +505,29 @@ class ParseMappings(object):
         if current_read_name is not None:
 
             best_read, mapping, barcode, strandedness = self.pick_bed_alignment(read_mappings_dict, current_read_name, genetype_hierarchy)
-            self._accumulate_full_coverage(read_mappings_dict[current_read_name], mapping, self.get_read_count(current_read_name), full_cov)
+            self._accumulate_full_coverage(read_mappings_dict[current_read_name], mapping, 1, full_cov)
 
             
             ## check if the read is unique or multi-mapped
 
-            if mapping == 'Multi' and self.args.collapse == True:
-                count_values = self.partition_read_counts(best_read)
-                for cdx, count_value in enumerate(count_values):
-                    if count_value == 0:
-                        continue
-                    curr_best_read = best_read[cdx]
-                    ## set the size= in the read name to the count value
-                    oldname = curr_best_read.query_name
-                    newname = oldname.split(';size=')[0] + f';size={count_value}'
-                    curr_best_read.query_name = newname
-                    curr_barcode = barcode[cdx]
-                    curr_strandedness = strandedness[cdx]
-                    # remove-at-source: same gate as the else branch, applied per partition
-                    remove = (self.args.remove_multimap and mapping == 'Multi') or (self.args.remove_antisense and curr_strandedness == 'antisense')
-                    if not remove:
-                        curr_best_read, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict = self.generate_metrics_bed_distinct(curr_best_read, curr_barcode, curr_strandedness, bed_barcode_dict, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, count_value, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict)
-                        output_bam.write(curr_best_read)
-                    # tally OUTSIDE the gate on purpose: removed multimap/antisense reads still
-                    # count toward the mappingstats rate (design Z). Do NOT move these inside `if not remove`.
-                    read_mappability_dict['Mapped'] += count_value
-                    read_mappability_dict[mapping] += count_value
-            else:
-                count_value = self.get_read_count(current_read_name)
-                # remove-at-source: skip counting + BAM write for multimap/antisense when requested
-                remove = (self.args.remove_multimap and mapping == 'Multi') or (self.args.remove_antisense and strandedness == 'antisense')
-                if not remove:
-                    best_read, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict = self.generate_metrics_bed_distinct(best_read, barcode, strandedness, bed_barcode_dict, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, count_value, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict)
-                    output_bam.write(best_read)
-                read_mappability_dict['Mapped'] += count_value
-                read_mappability_dict[mapping] += count_value
-                
+            count_value = 1
+            # remove-at-source: skip counting + BAM write for multimap/antisense when requested
+            remove = (self.args.remove_multimap and mapping == 'Multi') or (self.args.remove_antisense and strandedness == 'antisense')
+            if not remove:
+                best_read, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict = self.generate_metrics_bed_distinct(best_read, barcode, strandedness, bed_barcode_dict, read_feature_dict, read_biotype_dict, read_length_dict, featuretypeD, count_value, read_feature_distinctseqs_dict, read_biotypes_distinctseqs_dict)
+                output_bam.write(best_read)
+            # tally OUTSIDE the gate on purpose: removed multimap/antisense reads still
+            # count toward the mappingstats rate (design Z). Do NOT move these inside `if not remove`.
+            read_mappability_dict['Mapped'] += count_value
+            read_mappability_dict[mapping] += count_value
+            if strandedness == 'antisense':
+                read_mappability_dict['Antisense' if mapping == 'Unique' else 'AntisenseMulti'] += count_value
+            
             read_mappings_dict.pop(current_read_name)
 
         self._write_bedgraph_full(sample, full_cov)
         output_bam.close()
         bam.close()
-
-        if self.args.unmapped:
-            unmapbam.close()
 
         ## delete the defaultdict
         del read_mappings_dict
@@ -766,13 +564,6 @@ class ParseMappings(object):
         sample_logdata['median_read_length'] = median_read_length
         del total_lengths
 
-        if self.args.unmapped:
-            unmap_sequences_df = pd.DataFrame.from_dict(unmap_sequences, orient='index').reset_index().rename(columns={'index':'sequence', 0:'count'})
-            ## get the % of the total
-            unmap_sequences_df['%'] = unmap_sequences_df['count'] / unmap_sequences_df['count'].sum() * 100
-            unmap_sequences_df = unmap_sequences_df.sort_values(by='count', ascending=False, kind='stable').head(100)
-            unmap_sequences_df.to_csv(f'{bampath}{sample}-unmappedtop100.csv')
-            del unmap_sequences
 
         read_feature_df = pd.DataFrame(read_feature_dict, index=[0]).T.rename(columns={0:sample})
 
@@ -806,8 +597,6 @@ class ParseMappings(object):
         read_length_df = read_length_df.reindex(columns=['sample', 'rna_class'] + list(range(0, longest + 1)), fill_value=0)
 
         ## Get the number of distinct sequences for each feature by finding the length of the dictionary
-        # read_feature_distinctseqs_df = pd.DataFrame.from_dict(read_feature_distinctseqs_dict, orient='index').T.fillna(0).astype(int)
-        # read_biotypes_distinctseqs_df = pd.DataFrame.from_dict(read_biotypes_distinctseqs_dict, orient='index').T.fillna(0).astype(int)
         ## loop through the dictionary, find the length of the dictionary to make a dataframe of feature,length_of_distinct_sequences
         read_feature_distinctseqs_df = pd.DataFrame({k: [len(v)] for k, v in read_feature_distinctseqs_dict.items()}).T.rename(columns={0:'distinct_sequences'}).reset_index().rename(columns={'index':'feature'})
         read_biotypes_distinctseqs_df = pd.DataFrame({k: [len(v)] for k, v in read_biotypes_distinctseqs_dict.items()}).T.rename(columns={0:'distinct_sequences'}).reset_index().rename(columns={'index':'rna_class'})
@@ -821,14 +610,6 @@ class ParseMappings(object):
         del read_length_dict
         del read_feature_distinctseqs_dict
         del read_biotypes_distinctseqs_dict
-
-        # for k,v in ribospike_end_dict.items():
-        #     df = pd.DataFrame.from_dict(v, orient='index').T.fillna(0).astype(int)
-        #     df = df[['5p_1', '5p_2', '5p_3', '5p_4', '3p_4', '3p_3', '3p_2', '3p_1']]
-        #     df = df.div(df.sum(axis=0), axis=1) * 100
-        #     df = df.stack().reset_index().rename(columns={'level_0':'nucleotide', 'level_1':'position', 0:'count'})
-        #     df['sample'] = sample
-        #     df['spike'] = k
 
         return [read_feature_df, read_featuretypes_df, read_biotype_df, read_length_df, read_mappability_df, read_feature_distinctseqs_df, read_biotypes_distinctseqs_df]
     
@@ -868,7 +649,6 @@ class ParseMappings(object):
         """Write bedgraph_full/{sample}.bedgraph:
         feature  start  end  depth  multimap_depth  strand  rna_class (class id; release 0.3.0)
         (run-length-encoded on constant (depth, multimap_depth) blocks)."""
-        import os
         outdir = f"{self.args.output}/bedgraph_full"
         os.makedirs(outdir, exist_ok=True)
         with open(f"{outdir}/{sample}.bedgraph", 'w') as f:
@@ -932,7 +712,6 @@ class ParseMappings(object):
                 run(f'samtools index -@ {self.args.threads} {bampath}/{sample}.bam')
 
             run(f'rm -f {bampath}/{sample}.unsorted.bam')
-            # os.system('rm ' + self.args.o + '/bams/' + sample + '.merged.bam')
         
         return
 
@@ -960,13 +739,9 @@ def main():
     ap.add_argument('-s','--samples', required=True, help='Sample metadata file. Format: sample,group,fastq')
     ap.add_argument('-@','--threads', required=False, help='Number of threads to process paraellel fastq files with. Default=4', default=4)
     ap.add_argument('-o', '--output', required=True, help='Output prefix.')
-    ap.add_argument('-u', '--unmapped', required=False, help='Whether or not to dump the unmapped reads to a bam file.', action='store_true')
-    # ap.add_argument('-x','--best', required=False, help='Whether or not to assign the best alignment to the read. Default=False', action='store_true')
-    ap.add_argument('-b','--bed', required=False, help='Bed file to assign reads to. Default=None', default=None)
+    ap.add_argument('-b','--bed', required=True, help='BED file to assign reads to')
     ap.add_argument('-y','--bampath', required=False, help='Path to the bam files', default='')
     ap.add_argument('-z','--clipping', required=False, help='Number of bases to clip from the start and end of the read. Default=2', default=2)    
-    ap.add_argument('-c','--collapse', required=False, help='Whether or not the read input is collapsed from vsearch ', action='store_true')
-    ap.add_argument('-q','--distinct', required=False, help='Accepted for compatibility; distinct sequences are always counted since 0.3.0', default=False, action='store_true')
     ap.add_argument('--remove-multimap', required=False, default=False, action='store_true', help='Drop multimapping reads from counts, featuretypes and the parsed BAM (still tallied in mappingstats).')
     ap.add_argument('--gene-symbols', required=False, default=None, help='gene-symbol table (docker/tables/<species>.gene_symbols.tsv); adds its columns to featureclasses')
     ap.add_argument('--contig-tiers', required=False, default=None, help='contig-to-tier map (contig<TAB>tier; Snakefile: <run>/tables/contig_tiers.tsv). Without it, reads on UniVec contigs stay genome_unannotated')
@@ -993,21 +768,16 @@ def main():
     if not os.path.exists(f'{args.output}/alignments'):
         os.mkdir(f'{args.output}/alignments')
 
-    #Collapse reads
     samplelist = pm.samplelist
 
-    if args.bampath == '':
-        bampath = f'{args.output}/alignments/'
-    else:
-        if args.bampath.endswith('/') is False:
-            bampath = args.bampath + '/'
+    bampath = args.bampath.rstrip('/') + '/'
 
     for sample in samplelist:
         pm.logdata['input_bams'][sample] = f'{bampath}{sample}.merged.bam'
 
 
     # parse_mapping_bed_distinct is the only assignment path: the older parse_mapping_bed, unused because the
-    # Snakefile always passes -q, was removed in 0.3.0 (-q is still accepted). BED labels are checked once here.
+    # Snakefile always passed -q, was removed in 0.3.0 (-q itself in 0.4.0). BED labels are checked once here.
     if os.path.exists(args.bed) is False:
         print(f'{args.bed} does not exist. Check the path and rerun the script.')
         sys.exit(1)
@@ -1036,16 +806,13 @@ def main():
     feature_df = pd.concat(feature_data, axis=1).fillna(0).astype(int).sort_index(kind='stable')
     feature_df.index.name = 'feature'
 
-    ## get the RiboSpike reads
-    ribospike_df = feature_df.filter(like='RiboSpike', axis=0)
-    if ribospike_df.empty is False:
-        ribospike_df = ribospike_df.rename_axis('spike')
-        ribospike_df.to_csv(f'{args.output}/{args.output}-ribospike.csv')
+    # The spike-in counts are in ribospike/<prefix>-ribospike.csv (countRiboSpike.py); the copy this step wrote
+    # next to the read counts was removed in 0.4.0 (cleanup; the RiboSpike-* rows of *-readcounts.csv remain)
 
     biotype_df = pd.concat(biotype_data, axis=1).fillna(0).astype(int)
     biotype_df.index.name = 'rna_class'
 
-    # columns 0 to the longest read of the run, at least 150 (release 0.3.0, 3c; 0-150 before)
+    # columns 0 to the longest read of the run, at least 150 (release 0.3.0; 0-150 before)
     length_df = pd.concat(length_data, axis=0)
     length_columns = sorted(c for c in length_df.columns if c not in ('sample', 'rna_class'))
     length_df = length_df.reindex(columns=['sample', 'rna_class'] + length_columns)
@@ -1056,7 +823,7 @@ def main():
     if args.gene_symbols:
         featuretypes = add_gene_symbols(featuretypes, args.bed, args.gene_symbols)
 
-    mappability_df = pd.concat(mapdata, axis=1).fillna(0).T
+    mappability_df = pd.concat(mapdata, axis=1).fillna(0).astype(int).T   # integers (0.4.0)
     mappability_df['Total'] = mappability_df['Mapped'] + mappability_df['Unmapped']
     mappability_df.index.name = 'sample'
 

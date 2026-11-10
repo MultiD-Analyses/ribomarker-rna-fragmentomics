@@ -1,7 +1,7 @@
 """
 qcChecks.py -- consistency checks and computability rules for qcCollect.py.
 
-  Consistency checks C1-C10: exact
+  Consistency checks C1-C11: exact
   identities between pipeline stages, tolerance 0 (register B1). Each check gets one
   status: 'equal', 'differs', 'not evaluable' (an input is missing) or
   'not applicable' (not defined for the run's mode).
@@ -20,7 +20,8 @@ LOW_N = 100          # register A1 (proposed default): below this a share is mar
 CHECKS = {
     'C1': 'trim.pairs_written = fastp read-1 input count',
     'C2': 'reads written by trimming (pe: trim.merged_reads, se: trim.reads_written) = map.total_in',
-    'C3': "map.{tier}.unaligned = the next tier's map.{tier}.reads_in",
+    'C3': "map.{tier}.unaligned = the next tier's map.{tier}.reads_in (with --passes, per cell: "
+          "map.p{pass}.{tier}.unaligned + skipped_window = the next cell's arrived)",
     'C4': 'map.final_unaligned = assign.unmapped',
     'C5': 'assign.mapped + assign.unmapped = reads written by trimming',
     'C6': 'assign.removed_by_policy = mapping_total - reads_total in metrics/<sample>.log',
@@ -29,6 +30,8 @@ CHECKS = {
     'C8': 'the reference BED contains no contigs named for another species',
     'C9': 'every result table contains exactly the samples of the sample sheet',
     'C10': 'assign.unique + assign.multi + spike.reads = assign.mapped',
+    'C11': 'assign.removed_by_policy = assign.removed_multimap + assign.removed_antisense (counted from mappingstats: '
+           'Multi if remove_multimap; Antisense if remove_antisense, plus AntisenseMulti if not remove_multimap)',
 }
 
 # Contig name prefixes per species in <species>.bed (tRNA/rRNA, miRNA, piRNA, Ensembl transcripts).
@@ -73,9 +76,24 @@ def subtract(a, b):
     return None if a is None or b is None else a - b
 
 
-def sample_checks(sample, values, facts, mode, tiers, spike_counted=True, genes_counted=True, not_genes=None):
-    """Checks C1-C7 and C10 for one sample. values = {metric id: value}; facts = numbers read
+def cell_checks(sample, get, cells):
+    """C3 for a run with --passes: what leaves a cell (its unaligned and window-skipped reads) arrives at the next."""
+    def cell_id(cell, what):
+        return f"map.p{cell['pass']}.{cell['tier']}.{what}"
+    if len(cells) < 2:
+        return [check('C3', None, None, sample, 'fewer than two cells in the schedule')]
+    return [check('C3', add(get(cell_id(upper, 'unaligned')), get(cell_id(upper, 'skipped_window'))),
+                  get(cell_id(lower, 'arrived')), sample,
+                  f"p{upper['pass']} {upper['tier']} -> p{lower['pass']} {lower['tier']}")
+            for upper, lower in zip(cells, cells[1:])]
+
+
+def sample_checks(sample, values, facts, mode, tiers, spike_counted=True, genes_counted=True, not_genes=None,
+                  cells=None):
+    """Checks C1-C7, C10 and C11 for one sample. values = {metric id: value}; facts = numbers read
     for checks only (fastp read-1 input, metrics log totals); tiers = [{'tier', 'retain'}] in order;
+    cells = [{'pass', 'tier'}] in execution order for runs with --passes (release 0.4.0): C3 then compares
+    consecutive cells (unaligned + skipped_window of a cell = arrived of the next), otherwise consecutive tiers;
     spike_counted = False when count_ribospike is off (no spike-in tables, so C10 is not defined);
     genes_counted = False when there is no gene table (C7 is not defined);
     not_genes = RNA classes left out of the gene table (the run's class table; default_not_genes())."""
@@ -92,7 +110,10 @@ def sample_checks(sample, values, facts, mode, tiers, spike_counted=True, genes_
 
     checks.append(check('C2', written, get('map.total_in'), sample))
 
-    if len(tiers) < 2:
+    if cells is not None:
+        checks += cell_checks(sample, get, cells)
+        tiers = []
+    elif len(tiers) < 2:
         checks.append(check('C3', None, None, sample, 'tier order unknown (logs/map.log)'))
     for upper, lower in zip(tiers, tiers[1:]):
         subject = f"{upper['tier']} -> {lower['tier']}"
@@ -121,6 +142,9 @@ def sample_checks(sample, values, facts, mode, tiers, spike_counted=True, genes_
                             add(get('assign.unique'), get('assign.multi'), get('spike.reads')), sample))
     else:
         checks.append(not_applicable('C10', sample, SPIKE_OFF))
+
+    checks.append(check('C11', add(get('assign.removed_multimap'), get('assign.removed_antisense')),
+                        get('assign.removed_by_policy'), sample))
     return checks
 
 

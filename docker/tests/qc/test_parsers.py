@@ -119,3 +119,95 @@ def test_collector_records_the_code_fingerprint(collected, tmp_path, monkeypatch
     (tmp_path / 'CODE_FINGERPRINT').write_text('abc123\n')
     monkeypatch.setattr(qcCollect, 'VERSION_FILE', tmp_path / 'VERSION')
     assert qcCollect.read_version()['code_fingerprint'] == 'abc123'
+
+
+# ----------------------------------------------------------------------------- release 0.4.0: the schedule
+def fixture_schedule(run):
+    """tables/schedule.tsv for a fixture run, made from the "databases:" lines of its map.log (the default order)."""
+    import mapSchedule
+    lines = (run / 'logs' / 'map.log').read_text().splitlines()
+    own = [m.groups() for m in map(qcCollect.DATABASE_LINE.match, lines) if m]      # (map_cmd, index, retain)
+    (run / 'tables').mkdir(exist_ok=True)
+    mapSchedule.write_schedule(mapSchedule.build(own, 'human', 100), run / 'tables' / 'schedule.tsv')
+
+
+@pytest.mark.parametrize('mode', ['pe', 'se'])
+def test_the_tier_list_of_the_schedule_equals_that_of_map_log(tmp_path, mode):
+    from conftest import FIXTURES
+    shutil.copytree(FIXTURES / f'levelA_{mode}' / 'logs', tmp_path / 'logs')
+    fixture_schedule(tmp_path)
+    assert qcCollect.schedule_tiers(tmp_path / 'tables' / 'schedule.tsv') == \
+        qcCollect.read_map_log(tmp_path / 'logs' / 'map.log')['tiers']
+
+
+def test_with_a_schedule_the_collector_gives_the_same_metrics_and_checks(collected, tmp_path):
+    from conftest import prepare_run, run_collector, values
+    mode, baseline = collected
+    run, config_file = prepare_run(tmp_path, mode)
+    fixture_schedule(run)
+    report = run_collector(run, config_file)
+    assert values(report) == values(baseline)
+    assert [(c['id'], c['sample'], c['status']) for c in report['checks']] == \
+        [(c['id'], c['sample'], c['status']) for c in baseline['checks']]
+
+
+# ----------------------------------------------------------------------------- release 0.4.0: runs with passes
+def bowtie2_log(reads_in, unaligned):
+    return (f'{reads_in} reads; of these:\n  {reads_in} (100.00%) were unpaired; of these:\n'
+            f'    {unaligned} (0.00%) aligned 0 times\n    {reads_in - unaligned} (0.00%) aligned exactly 1 time\n'
+            f'    0 (0.00%) aligned >1 times\n0.00% overall alignment rate\n')
+
+
+def passes_run(tmp_path, mode, second_pass=False):
+    """The level A fixture turned into a run with --passes: the identity passes file (one pass, the logs under
+    their 0.4.0 names), and with second_pass a pass-2 genome cell with a window that skips 3 reads and aligns none."""
+    import mapSchedule
+    import yaml
+    from conftest import prepare_run
+    run, config_file = prepare_run(tmp_path, mode)
+    fixture_schedule(run)
+    rows = mapSchedule.read_schedule(run / 'tables' / 'schedule.tsv')
+    samples = [line.split(',')[0] for line in (tmp_path / f'samples_{mode}.csv').read_text().splitlines()]
+    logs = run / 'alignments' / 'logs'
+    for sample in samples:
+        cells = []
+        for row in rows:
+            (logs / f"{sample}.{row['index_name']}.log").rename(logs / f"{sample}.p1.{row['index_name']}.log")
+            cells.append(f"1\t{row['index_name']}\t1\t0\n")
+        if second_pass:
+            left = qcCollect.read_tier_log(logs / f'{sample}.p1.human-genome.log')['unaligned']
+            skipped = min(3, left)
+            (logs / f'{sample}.p2.human-genome.log').write_text(bowtie2_log(left - skipped, left - skipped))
+            cells.append(f'2\thuman-genome\t1\t{skipped}\n')
+        (logs / f'{sample}.cells.tsv').write_text('pass\tindex_name\tran\tskipped_window\n' + ''.join(cells))
+    if second_pass:
+        rows.append(dict(rows[-1], **{'pass': '2', 'step': '1', 'min_length': '20'}))
+        mapSchedule.write_schedule(rows, run / 'tables' / 'schedule.tsv')
+    config = yaml.safe_load(config_file.read_text())
+    config['passes'] = str(REPO / 'docker' / 'tests' / 'references' / 'data' / 'test_passes_identity.tsv')
+    config_file.write_text(yaml.safe_dump(config))
+    return run, config_file
+
+
+@pytest.mark.parametrize('second_pass', [False, True])
+def test_with_passes_the_cell_metrics_replace_the_tier_metrics(collected, tmp_path, second_pass):
+    from conftest import run_collector, values
+    mode, baseline = collected
+    report = run_collector(*passes_run(tmp_path, mode, second_pass))
+    found, before = values(report), values(baseline)
+    for (sample, metric_id), value in before.items():
+        tier = metric_id.split('.')[1] if metric_id.startswith('map.') else None
+        if metric_id.endswith(('.reads_in', '.unaligned')) and metric_id.startswith('map.'):
+            assert (sample, metric_id) not in found, metric_id          # not written with --passes
+            what = 'arrived' if metric_id.endswith('.reads_in') else 'unaligned'
+            assert found[(sample, f'map.p1.{tier}.{what}')] == value
+        else:
+            assert found[(sample, metric_id)] == value, metric_id      # aligned, totals, assignment: unchanged
+    checks = {(c['id'], c['sample'], c['subject']): c['status'] for c in report['checks']}
+    assert set(checks.values()) <= {'equal', 'not applicable'}, [k for k, v in checks.items() if v not in
+                                                                ('equal', 'not applicable')]
+    n_cells = 15 if second_pass else 14
+    assert sum(k[0] == 'C3' for k in checks) == len(report['samples']) * (n_cells - 1)
+    if second_pass:
+        assert any(k[0] == 'C3' and k[2] == 'p1 human-genome -> p2 human-genome' for k in checks)
+    assert report['provenance']['prov.class_tables']['passes']['replaced'] is True

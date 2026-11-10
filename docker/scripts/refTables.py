@@ -3,8 +3,8 @@
 One table per species, `<species>.rna_classes.tsv`, tab-separated, '#' lines are comments, columns:
 
   source_label   the label in the 5th column of the references BED (or a label the pipeline sets itself:
-                 UniVec, unannotated, unmapped, RiboSpike-*, miND, antisense, Natural, Unmapped)
-  tier           the tier the label comes from (index basename without the species prefix, e.g. ncrna), or *
+                 UniVec, unannotated, unmapped, RiboSpike-*, miND, Natural, Unmapped)
+  tier           the tier the label comes from (index basename without the species prefix, e.g. ncrna_lnc), or *
   class_id       the class written into output tables (no spaces)
   display_name   the name in the QC report and documentation
   group          the group in the QC report's composition and tier plots
@@ -28,15 +28,18 @@ import hashlib
 import os
 import sys
 
-import dbPaths
 
 TABLES_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'tables'))
 COLUMNS = ['source_label', 'tier', 'class_id', 'display_name', 'group', 'display_order', 'rank_in_tier',
            'positions', 'gene_table', 'counts_as_rrna', 'description']
 SYSTEM_LABELS = ('UniVec', 'unannotated', 'unmapped', 'RiboSpike-T1', 'RiboSpike-T2', 'RiboSpike-T3', 'RiboSpike-T4',
-                 'RiboSpike-Short', 'miND', 'antisense', 'Natural', 'Unmapped')
+                 'RiboSpike-Short', 'miND', 'Natural', 'Unmapped')
+# Labels the pipeline set itself in earlier releases; a table row for them is no longer used (a warning)
+OBSOLETE_LABELS = {'antisense': 'antisense reads keep their own class since release 0.4.0'}
 UNKNOWN_RANK = 10            # rank of BED labels missing from the table (parseMappings before 0.3.0)
 UNKNOWN_ORDER = 1000                       # report position of classes missing from the table (last)
+# The Ensembl ncRNA reference is four sub-references since release 0.4.0 (buildDB/split_ncrna.py)
+SPLIT_TIERS = {'ncrna': ('ncrna_mt', 'ncrna_snsno', 'ncrna_other', 'ncrna_lnc')}
 UNKNOWN_GROUP = 'lncRNA and other ncRNA'   # composition group of unlisted labels (as before 0.3.0); their read-length
                                            # curves are in the report's "Other RNAs" (qcReport.OWN_LENGTH_BUTTON)
 GENE_TABLE_VALUES = ('yes', 'drop', 'exclude')
@@ -108,7 +111,8 @@ class ClassTable:
     """The class table of a run. The tier column records which reference a label comes from (or '*' for all).
     In 0.3.0 the pipeline does not use it for lookups: a label has one class, rank and position setting in every
     tier, so the rows of one label must agree on LABEL_COLUMNS (checked here; critique 2026-10-27). Tier-specific
-    rows can come with the split of the Ensembl ncRNA reference (0.4.0). row(label, tier) is kept for that.
+    rows could follow; the ncRNA split of 0.4.0 needs none (each label lies in one of the four sub-references).
+    row(label, tier) is kept for that.
 
     Two views: parseMappings works with the BED labels (rank_map, position_labels, class_of) and writes class
     ids; every later step reads class ids (the class-level methods gene_table, position_classes, rrna_classes,
@@ -122,7 +126,6 @@ class ClassTable:
             present = {row['source_label'] for row in self.rows}
             self.rows += [row for row in read_table(default)
                           if row['source_label'] in SYSTEM_LABELS and row['source_label'] not in present]
-        self.warnings = []
         self._by_label = {}
         self._by_class = {}
         for row in self.rows:
@@ -152,10 +155,22 @@ class ClassTable:
             return None
         return rows[0] if rows else None
 
+    @staticmethod
+    def split_tier_note(unknown):
+        """For the warning about unknown tiers: which of them were split, and into what (empty if none)."""
+        notes = [f'{tier} is {", ".join(SPLIT_TIERS[tier])} since release 0.4.0' for tier in unknown if tier in SPLIT_TIERS]
+        return f' ({"; ".join(notes)})' if notes else ''
+
     def unknown_tiers(self, tier_ids):
         """Tiers named in the table that the run's tier list does not have ('*' excluded): a misspelt tier, or a
         table made for other references. Harmless in 0.3.0 (lookups do not use the tier), but worth a warning."""
         return sorted({row['tier'] for row in self.rows if row['tier'] != '*'} - set(tier_ids))
+
+    def obsolete_rows(self):
+        """Warnings for rows of labels the pipeline no longer sets (OBSOLETE_LABELS), e.g. a table copied from
+        release 0.3.0 with the row antisense."""
+        return [f'the RNA class table {os.path.basename(self.path)} has a row for {label}, which is not used: '
+                f'{reason}; the row can be removed' for label, reason in OBSOLETE_LABELS.items() if label in self._by_label]
 
     def check_labels(self, labels, quiet=False):
         """Warn about labels (e.g. of a BED) that the table does not cover; returns them. quiet: no message
@@ -164,7 +179,6 @@ class ClassTable:
         if missing and not quiet:
             message = (f'WARNING: {len(missing)} label(s) not in the class table {self.path}: {", ".join(missing)}; '
                        f'used as their own class, group "{UNKNOWN_GROUP}", rank {UNKNOWN_RANK}')
-            self.warnings.append(message)
             print(message, file=sys.stderr)
         return missing
 
@@ -242,7 +256,7 @@ class ClassTable:
 
 
 def gene_symbols_table(species):
-    """docker/tables/<species>.gene_symbols.tsv (buildDB/make_gene_symbols.py, release 0.3.0, 3f), or None."""
+    """docker/tables/<species>.gene_symbols.tsv (buildDB/make_gene_symbols.py, release 0.3.0), or None."""
     path = os.path.join(TABLES_DIR, f'{species}.gene_symbols.tsv')
     return path if os.path.exists(path) else None
 
@@ -262,7 +276,7 @@ def gene_symbols_applied(symbols_path, bed_path):
 
 
 def renamed_keep(value, table):
-    """The names of a coverage filter that translate_keep changes: [(old name, class id)]. The 0.3.0 plan (D2)
+    """The names of a coverage filter that translate_keep changes: [(old name, class id)]. Release 0.3.0
     accepts old class names with a warning; e.g. miRNA-star became part of miRNA, so it now keeps every miRNA."""
     names = [name.strip() for name in str(value).split(',') if name.strip() and name.strip() != 'all']
     return [(name, table.class_of(name)) for name in names if table.class_of(name) != name]
@@ -283,12 +297,6 @@ def translate_keep(value, table):
     return ','.join(classes)
 
 
-def load(species, references_dir=None, explicit=None):
-    """The ClassTable to use for a run."""
-    return ClassTable(find_table(species, references_dir, explicit), species)
-
-
-tier_id = dbPaths.tier_id     # tier ids: index basename without the species prefix
 
 
 # --- provenance -----------------------------------------------------------------------------------------

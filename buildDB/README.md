@@ -8,8 +8,8 @@ Most users do not need this folder: the human and mouse references are built int
 
 | Species | Built | Sources | Built with |
 |---|---|---|---|
-| human (GRCh38) | 2026-07-07 | Ensembl 116, GtRNAdb2 hg38, MirGeneDB 3.0, piRBase v3.0 (gold set), miRTrace rRNA, NCBI UniVec | an earlier version of `buildDB_v1.py` that was not archived (its checksum is in the MANIFEST) |
-| mouse (GRCm39) | 2026-10-08 | Ensembl 116, GtRNAdb2 mm39, MirGeneDB 3.0, piRBase v3.0 (gold set), miRTrace rRNA, NCBI UniVec | `buildDB_v1.py` and `builder_core.py` as published, apart from comments |
+| human (GRCh38) | 2026-07-07 | Ensembl 116, GtRNAdb2 hg38, MirGeneDB 3.0, piRBase v3.0 (gold set), miRTrace rRNA, NCBI UniVec | an earlier version of `buildDB_v1.py` that was not archived (its checksum is in the MANIFEST); ncRNA reference split on 2026-11-03 with `split_ncrna.py` (below) |
+| mouse (GRCm39) | 2026-10-08 | Ensembl 116, GtRNAdb2 mm39, MirGeneDB 3.0, piRBase v3.0 (gold set), miRTrace rRNA, NCBI UniVec | `buildDB_v1.py` and `builder_core.py` of release 0.3.0, apart from comments; ncRNA reference split on 2026-11-03 with `split_ncrna.py` (below) |
 
 Exact URLs, download times, tool versions and checksums: [`docker/assets/PROVENANCE_<species>.md`](../docker/assets/) and `MANIFEST_<species>.json`. Sources, citations and terms: [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
@@ -31,6 +31,25 @@ python buildDB_v1.py --species human --inputs ./inputs --output ../my_references
 
 `python update_manifest.py <folder> --species human --check` compares the files of a references folder with its own MANIFEST, e.g. after copying the folder.
 
+## The ncRNA split (release 0.4.0)
+
+Since 0.4.0 the Ensembl ncRNA reference is four references, aligned in this order at its former place (between piRNA and cDNA):
+
+| Reference | Labels (Ensembl's biotype) | Human records |
+|---|---|---|
+| `ncrna_mt` | Mt_tRNA, Mt_rRNA | 24 |
+| `ncrna_snsno` | snRNA, snoRNA, scaRNA | 2,720 |
+| `ncrna_other` | misc_RNA, rRNA (nuclear rRNA gene loci) | 1,324 |
+| `ncrna_lnc` | lncRNA | 34,997 |
+
+A new build (`builder_core.py`) writes the four indexes directly. `split_ncrna.py` made them for the published references from the existing `gtf/<species>.ncRNA.fa`, without a rebuild: every record unchanged and in its order, its label (Ensembl's biotype) from `gtf/<species>.ncRNA.bed`; it replaces the `ncrna` line of `<species>.dbpaths.csv` by four lines, runs `update_manifest.py`, records the split in the MANIFEST and PROVENANCE, and checks that every other file (the BED included) is unchanged, so that the gene-symbol tables stay valid. The checksum of `split_ncrna.py` recorded there is that of the script as it was run; the published script was edited afterwards in comments and messages only, so its checksum differs.
+
+```bash
+python buildDB/split_ncrna.py docker/assets --species human --saved-manifest <copy of the MANIFEST before the split>/MANIFEST_human.json --threads 8
+```
+
+The third column of `<species>.dbpaths.csv` is always `T` since 0.4.0 (`F` is refused by the pipeline).
+
 ## Gene symbols (release 0.3.0)
 
 `make_gene_symbols.py` writes `docker/tables/<species>.gene_symbols.tsv`: the HGNC (human) or MGI (mouse) id and symbol, and the miRBase name, of every reference sequence of `<species>.bed` that has one. The pipeline adds these columns to `*-featureclasses.csv` and `*-genelengths.csv` when the references in use have the BED the table was built for (its sha256 is in the table's header); otherwise it leaves them empty and warns.
@@ -49,7 +68,7 @@ python buildDB/make_gene_symbols.py --species human --work WORK --references doc
 
 ## Using a built folder
 
-Give the folder to the pipeline with `--references FOLDER`, with the starter, with `docker run` or without Docker; see the [user guide, *Own references*](../USER_GUIDE.md#own-references). The paths in `<species>.dbpaths.csv` are relative to the folder, so it can be moved or mounted anywhere.
+Give the folder to the pipeline with `--references FOLDER`, with the starter, with `docker run` or without Docker; see the [user guide, *Own references*](../USER_GUIDE.md#53-own-references). The paths in `<species>.dbpaths.csv` are relative to the folder, so it can be moved or mounted anywhere.
 
 Folder layout:
 
@@ -57,7 +76,7 @@ Folder layout:
 my_references/
   univec/ ribospike/ rrna/ trna/ mirna/ pirna/ gtf/ genome/   # the indexes
   human.bed                   # reference sequences: sequence name, start, end, name, label (Ensembl biotype), strand
-  human.dbpaths.csv           # mapping tiers in priority order; index paths relative to this folder
+  human.dbpaths.csv           # mapping tiers in priority order (aligner,index,T); index paths relative to this folder
   MANIFEST_human.json         # per source: URL, version, download time, sha256; tool versions;
                               # size and sha256 of the dbpaths file, the BED and every index file
   PROVENANCE_human.md         # the same, readable
@@ -68,4 +87,4 @@ my_references/
 - **Versions:** each build is tied to a numbered script. `buildDB_v1.py` stays as it is; a build with new sources goes into a copy, `buildDB_v2.py`, with the new URLs and versions in its `SOURCES`.
 - **Ensembl's FTP is moving** to a new platform; release 116 is the last on the classic `ftp.ensembl.org`. If `--check-urls` reports the genome or annotation URLs as missing, switch them to the new host (`ftp.ebi.ac.uk/pub/ensemblorganisms/...`) in a new script version.
 - **The rRNA file is pinned to a branch (`master`), not a commit.** The MANIFEST records the checksum of the exact file downloaded, so a build can be checked by content; for an exact URL, pin a commit.
-- **Another species:** add an entry to `SOURCES` in a new script version, following the human and mouse entries, check every URL, and mark it `"verified"`; the builder refuses entries marked as placeholders. Give every label of the new BED a row in an RNA class table (`<species>.rna_classes.tsv` in the folder; see the [user guide](../USER_GUIDE.md#tier-list-and-rna-class-table)); labels without one get a warning. Run the pipeline with `--species NAME --references FOLDER`.
+- **Another species:** add an entry to `SOURCES` in a new script version, following the human and mouse entries, check every URL, and mark it `"verified"`; the builder refuses entries marked as placeholders. Give every label of the new BED a row in an RNA class table (`<species>.rna_classes.tsv` in the folder; see the [user guide](../USER_GUIDE.md#54-rna-class-table)); labels without one get a warning. Run the pipeline with `--species NAME --references FOLDER`.

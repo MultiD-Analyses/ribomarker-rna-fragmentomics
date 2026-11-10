@@ -35,6 +35,7 @@ import yaml
 
 import codeFingerprint
 import dbPaths
+import mapSchedule
 import qcChecks
 import refTables
 
@@ -251,21 +252,6 @@ def read_cutadapt_dimer(c, out, sample):
         c.put(sample, 'trim.adapter_dimer_reads', dimers)
 
 
-def read_lane_counts(c, out, sample):
-    """Reads per lane of a sample whose lane files the Snakefile merged (logs/lanes/<sample>.csv)."""
-    template = 'trim.{lane}.pairs_in' if c.mode == 'pe' else 'trim.{lane}.reads_in'
-    for read, lane, reads in read_rows(out / 'logs' / 'lanes' / f'{sample}.csv')[1:]:
-        if read == 'R1':
-            c.put(sample, template, int(reads), lane=f'L{lane}')
-
-
-def lane_samples(config):
-    """Samples whose lanes were merged: those in the run command's lanes.csv (config 'lanes')."""
-    if not config.get('lanes'):
-        return set()
-    return {row[0] for row in read_rows(Path(config['lanes']))[1:]}
-
-
 def derive_short_inserts(c, sample):
     unit = 'pairs' if c.mode == 'pe' else 'reads'
     too_short = c.get(sample, f'trim.{unit}_too_short')
@@ -342,6 +328,13 @@ def read_map_log(path):
     return {'tiers': tiers, 'commands': commands, 'versions': versions}
 
 
+def schedule_tiers(path):
+    """The tier list from tables/schedule.tsv (release 0.4.0, mapSchedule.py), in the form read_map_log gives; runs
+    before 0.4.0 have no schedule and keep the tier list of map.log."""
+    return [{'tier': row['index_name'], 'tool': row['map_cmd'], 'retain': 'T',
+             'reports_multi': not K_ONE.search(row['options'])} for row in mapSchedule.read_schedule(path)]
+
+
 def log_number(pattern, text):
     match = re.search(pattern, text, re.MULTILINE)
     if match is None:
@@ -373,30 +366,80 @@ def read_tier_log(path):
     return {'reads_in': reads_in, 'aligned': aligned, 'unaligned': unaligned, 'multi': multi}
 
 
-def collect_mapping(c, out, sample, tiers):
-    parsed = {}
-    for tier in tiers:
-        name = tier['tier']
-        source = f'alignments/logs/{sample}.{name}.log'
-        try:
-            parsed[name] = read_tier_log(out / source)
-        except INPUT_ERRORS as error:
-            c.warn(sample, source, f'{type(error).__name__}: {error}')
-    for tier in tiers:
-        name = tier['tier']
-        if name not in parsed:
+def read_cells(out, sample, tiers):
+    """The cells one sample went through, in execution order: [{'pass', 'tier', 'reports_multi', 'log', 'ran',
+    'skipped'}]. From tables/schedule.tsv and alignments/logs/<sample>.cells.tsv (release 0.4.0); runs without a
+    schedule (before 0.4.0, the QC fixtures) have one pass through the tiers of map.log, and runs without cells.tsv
+    ran every cell and skipped no read. The log of a cell is <sample>.p<pass>.<tier>.log since 0.4.0,
+    <sample>.<tier>.log before."""
+    schedule = out / 'tables' / 'schedule.tsv'
+    if schedule.exists():
+        rows = [{'pass': r['pass'], 'tier': r['index_name'], 'reports_multi': not K_ONE.search(r['options'])}
+                for r in mapSchedule.read_schedule(schedule)]
+    else:
+        rows = [{'pass': '1', 'tier': t['tier'], 'reports_multi': t['reports_multi']} for t in tiers]
+    done = {}
+    cells_file = out / 'alignments' / 'logs' / f'{sample}.cells.tsv'
+    if cells_file.exists():
+        with open(cells_file) as f:
+            done = {(r['pass'], r['index_name']): (int(r['ran']), int(r['skipped_window']))
+                    for r in csv.DictReader(f, delimiter='\t')}
+    for row in rows:
+        log = f"alignments/logs/{sample}.p{row['pass']}.{row['tier']}.log"
+        if not (out / log).exists():
+            log = f"alignments/logs/{sample}.{row['tier']}.log"
+        row['log'] = log
+        row['ran'], row['skipped'] = done.get((row['pass'], row['tier']), (1, 0))
+    return rows
+
+
+def collect_mapping(c, out, sample, tiers, passes=False):
+    """The tier metrics (one pass) or, with --passes (release 0.4.0), the cell metrics and the per-tier sums."""
+    cells = read_cells(out, sample, tiers)
+    for cell in cells:
+        if not cell['ran']:              # no read reached the aligner
+            cell['counts'] = {'reads_in': 0, 'aligned': 0, 'unaligned': 0, 'multi': 0}
             continue
-        log = parsed[name]
-        c.put(sample, 'map.{tier}.reads_in', log['reads_in'], tier=name)
-        c.put(sample, 'map.{tier}.aligned', log['aligned'], tier=name)
-        c.put(sample, 'map.{tier}.unaligned', log['unaligned'], tier=name)
-        if log['multi'] is not None and tier['reports_multi']:
-            c.put(sample, 'map.{tier}.aligned_multi', log['multi'], tier=name)
-    first, last = tiers[0]['tier'], tiers[-1]['tier']
-    if first in parsed:
-        c.put(sample, 'map.total_in', parsed[first]['reads_in'])
-    if last in parsed:
-        c.put(sample, 'map.final_unaligned', parsed[last]['unaligned'])
+        try:
+            cell['counts'] = read_tier_log(out / cell['log'])
+        except INPUT_ERRORS as error:
+            c.warn(sample, cell['log'], f'{type(error).__name__}: {error}')
+    if not passes:
+        for cell in cells:
+            if 'counts' not in cell:
+                continue
+            log, name = cell['counts'], cell['tier']
+            c.put(sample, 'map.{tier}.reads_in', log['reads_in'], tier=name)
+            c.put(sample, 'map.{tier}.aligned', log['aligned'], tier=name)
+            c.put(sample, 'map.{tier}.unaligned', log['unaligned'], tier=name)
+            if log['multi'] is not None and cell['reports_multi']:
+                c.put(sample, 'map.{tier}.aligned_multi', log['multi'], tier=name)
+        first, last = cells[0], cells[-1]
+        if 'counts' in first:
+            c.put(sample, 'map.total_in', first['counts']['reads_in'])
+        if 'counts' in last:
+            c.put(sample, 'map.final_unaligned', last['counts']['unaligned'])
+        return
+    aligned, multi = {}, {}
+    for cell in cells:
+        if 'counts' not in cell:
+            continue
+        log, names = cell['counts'], {'pass': cell['pass'], 'tier': cell['tier']}
+        c.put(sample, 'map.p{pass}.{tier}.arrived', log['reads_in'] + cell['skipped'], **names)
+        c.put(sample, 'map.p{pass}.{tier}.aligned', log['aligned'], **names)
+        c.put(sample, 'map.p{pass}.{tier}.unaligned', log['unaligned'], **names)
+        c.put(sample, 'map.p{pass}.{tier}.skipped_window', cell['skipped'], **names)
+        aligned[cell['tier']] = aligned.get(cell['tier'], 0) + log['aligned']
+        if log['multi'] is not None and cell['reports_multi']:
+            multi[cell['tier']] = multi.get(cell['tier'], 0) + log['multi']
+    if any('counts' not in cell for cell in cells):      # a sum over the passes would be wrong
+        return
+    for name, value in aligned.items():
+        c.put(sample, 'map.{tier}.aligned', value, tier=name)
+    for name, value in multi.items():
+        c.put(sample, 'map.{tier}.aligned_multi', value, tier=name)
+    c.put(sample, 'map.total_in', cells[0]['counts']['reads_in'] + cells[0]['skipped'])
+    c.put(sample, 'map.final_unaligned', cells[-1]['counts']['unaligned'] + cells[-1]['skipped'])
 
 
 # ----------------------------------------------------------------------------- 5.5 assignment
@@ -408,6 +451,9 @@ def read_mappingstats(c, out, sample):
     c.put(sample, 'assign.unmapped', values['Unmapped'])
     c.put(sample, 'assign.unique', values['Unique'])
     c.put(sample, 'assign.multi', values['Multi'])
+    if 'Antisense' in row:                   # release 0.4.0; runs before have no antisense columns
+        c.put(sample, 'assign.antisense', to_int(row['Antisense']))
+        c.put(sample, 'assign.antisense_multi', to_int(row['AntisenseMulti']))
 
 
 def read_classcounts(c, out, sample):
@@ -416,7 +462,7 @@ def read_classcounts(c, out, sample):
     spikes = sum(n for biotype, n in counts.items() if biotype.startswith('RiboSpike'))
     # A category missing from this count table had no reads in any sample: 0 is a measurement here.
     unannotated = counts.get(c.classes.class_of('unannotated'), 0)      # genome_unannotated
-    univec = counts.get(c.classes.class_of('UniVec'), 0)                # vector contaminants (3g; before: in unannotated)
+    univec = counts.get(c.classes.class_of('UniVec'), 0)                # vector contaminants (since 0.3.0; before: in unannotated)
     c.put(sample, 'assign.kept', kept)
     c.put(sample, 'assign.annotated', kept - unannotated - univec - spikes)
     for biotype, n in counts.items():
@@ -425,25 +471,24 @@ def read_classcounts(c, out, sample):
 
 
 def derive_removed_by_policy(c, sample, config):
+    """assign.removed_by_policy = mapped - kept (classcounts); its split by reason is counted from mappingstats
+    (release 0.4.0): removed_multimap = Multi if remove_multimap; removed_antisense = Antisense if
+    remove_antisense, plus AntisenseMulti if remove_antisense and not remove_multimap (with remove_multimap on, an
+    antisense multimapper is removed as a multimapper). Check C11 compares the two sides. Runs without the
+    antisense columns (before 0.4.0) get no split."""
     mapped, kept = c.get(sample, 'assign.mapped'), c.get(sample, 'assign.kept')
-    if mapped is None or kept is None:
+    if mapped is not None and kept is not None:
+        c.put(sample, 'assign.removed_by_policy', mapped - kept)
+    multi, antisense = c.get(sample, 'assign.multi'), c.get(sample, 'assign.antisense')
+    antisense_multi = c.get(sample, 'assign.antisense_multi')
+    if multi is None or antisense is None or antisense_multi is None:
         return
-    removed = mapped - kept
-    c.put(sample, 'assign.removed_by_policy', removed)
-    # Split by reason. With remove_multimap every Multi read is removed (antisense multimappers included);
-    # the antisense reads then are the rest. mappingstats has no antisense column.
     remove_multi = config.get('remove_multimap', True)          # Snakefile defaults
     remove_antisense = config.get('remove_antisense', True)
-    multi = c.get(sample, 'assign.multi')
-    if multi is None:
-        return
-    removed_multi = multi if remove_multi else 0
-    removed_antisense = removed - removed_multi if remove_antisense else 0
-    if removed_antisense < 0 or (not remove_antisense and removed != removed_multi):
-        c.warn(sample, 'assign.removed_by_policy', f'removed reads ({removed}) do not split into multimappers '
-               f'({removed_multi}) and antisense reads; split not reported')
-        return
-    c.put(sample, 'assign.removed_multimap', removed_multi)
+    c.put(sample, 'assign.removed_multimap', multi if remove_multi else 0)
+    removed_antisense = 0
+    if remove_antisense:
+        removed_antisense = antisense + (0 if remove_multi else antisense_multi)
     c.put(sample, 'assign.removed_antisense', removed_antisense)
 
 
@@ -471,8 +516,8 @@ def read_classlengths(c, out, sample):
 
 
 def natural_classes(c, classes):
-    """The classes whose reads are natural RNA: all kept classes except the spike-ins and UniVec (§8 item 11 of
-    the 0.3.0 plan); the denominator of the report's "% of natural reads". Spike-ins: the group spike-ins of the
+    """The classes whose reads are natural RNA: all kept classes except the spike-ins and UniVec (release
+    0.3.0); the denominator of the report's "% of natural reads". Spike-ins: the group spike-ins of the
     class table (RiboSpike-*, miND; critique 2026-10-27: miND counted as natural before), and RiboSpike-* by name
     for class tables of older runs."""
     univec = c.classes.class_of('UniVec')
@@ -729,10 +774,14 @@ def read_class_tables(c, out, config):
     record = {'rna_classes': refTables.provenance(classes_source, refTables.default_table(species), classes_copy)}
     try:
         own_tiers = dbPaths.find_dbpaths(dbdir, species)
-        record['tiers'] = refTables.provenance(config.get('tiers') or own_tiers, own_tiers, out / 'tables' / 'tiers.csv')
+        source = config.get('tiers') or own_tiers           # an order file (0.4.0), or the folder's dbpaths file
+        copy = out / 'tables' / 'tiers.csv' if os.path.abspath(source) == os.path.abspath(own_tiers) else None
+        record['tiers'] = refTables.provenance(source, own_tiers, copy)
     except FileNotFoundError:     # no dbpaths file in the references folder: only the synthetic test bundle (a
         pass                      # real run stops at the Snakefile's find_dbpaths before this point)
-    if config.get('gene_symbols') and os.path.exists(config['gene_symbols']):      # 3f
+    if config.get('passes'):      # release 0.4.0: there is no default passes file, so it always replaces one
+        record['passes'] = dict(refTables.provenance(config['passes'], config['passes']), replaced=True)
+    if config.get('gene_symbols') and os.path.exists(config['gene_symbols']):      # release 0.3.0
         record['gene_symbols'] = refTables.provenance(config['gene_symbols'], config['gene_symbols'])
         bed = os.path.join(dbdir, f'{species}.bed')
         record['gene_symbols']['applied'] = refTables.gene_symbols_applied(config['gene_symbols'], bed)
@@ -835,14 +884,18 @@ def read_bed_contigs(path):
 
 
 def run_checks(c, out, config, map_log):
-    """Consistency checks C1-C10 and the error / computability rules (registers A4, B3)."""
+    """Consistency checks C1-C11 and the error / computability rules (registers A4, B3)."""
     tiers = map_log['tiers'] if map_log is not None else []
+    cells = None                                     # with --passes, C3 follows the cells (release 0.4.0)
+    if config.get('passes') and (out / 'tables' / 'schedule.tsv').exists():
+        cells = [{'pass': r['pass'], 'tier': r['index_name']}
+                 for r in mapSchedule.read_schedule(out / 'tables' / 'schedule.tsv')]
     spike_counted = config.get('count_ribospike', True)                      # Snakefile default
     genes_counted = gene_table_made(config)
     for sample in c.samples:
         values = {metric_id: record['value'] for metric_id, record in c.metrics[sample].items()}
         c.checks += qcChecks.sample_checks(sample, values, c.facts[sample], c.mode, tiers, spike_counted,
-                                           genes_counted, c.classes.not_gene_classes())
+                                           genes_counted, c.classes.not_gene_classes(), cells)
         if values.get('map.total_in') == 0:                                   # register A4
             c.warn(sample, 'map.total_in', 'no reads entered mapping; later sections are not evaluable')
 
@@ -868,16 +921,6 @@ def run_checks(c, out, config, map_log):
 
 def warn_unsupported(c, config, samples):
     """Settings and trimming branches the QC numbers and checks are not designed for."""
-    if config.get('collapse'):
-        c.warn(None, 'config: collapse', 'collapse: True — the mapping tiers count distinct sequences, not reads, '
-               'so the map.* metrics are not read counts and checks C2-C4 may differ for this reason alone')
-    if (config.get('subsample_reads') or 0) > 0 and not config.get('collapse'):   # the Snakefile subsamples only without collapse
-        c.warn(None, 'config: subsample_reads', f"subsample_reads: {config['subsample_reads']} — only a subsample of "
-               'the trimmed reads was mapped, so checks C2 and C5 compare it with all trimmed reads and differ')
-    if not config.get('remove_antisense', True):   # protein_coding / pre-mRNA antisense tagging gap (known limitation)
-        c.warn(None, 'config: remove_antisense', 'remove_antisense: False — antisense reads of protein_coding and '
-               'pre-mRNA features are not tagged _antisense: they are counted with the sense feature in '
-               '*-readcounts.csv (antisense reads of the other biotypes are separate _antisense rows)')
     if config.get('species') == 'mouse':        # no mouse dataset has been checked yet
         c.warn(None, 'config: species', 'mouse references not validated on mouse data: their content was checked '
                '(no human contigs, mouse tRNA loci, synthetic reads), but no real mouse result has been compared')
@@ -904,10 +947,11 @@ def collect(out, config):
     if c.classes is None:                               # unreadable: the code's default, with the warning above
         c.classes = refTables.ClassTable(refTables.default_table(config['species']), config['species'])
 
-    merged = lane_samples(config)
     map_log = None
     try:
         map_log = read_map_log(out / 'logs' / 'map.log')
+        if (out / 'tables' / 'schedule.tsv').exists():
+            map_log['tiers'] = schedule_tiers(out / 'tables' / 'schedule.tsv')
     except INPUT_ERRORS as error:
         c.warn(None, 'logs/map.log', f'{type(error).__name__}: {error}; no tier metrics')
 
@@ -916,12 +960,10 @@ def collect(out, config):
         c.attempt(sample, f'{logs}.trim.cutadapt.json', read_cutadapt_trim, out, sample)
         c.attempt(sample, f'{logs}.dimer.cutadapt.json', read_cutadapt_dimer, out, sample)
         derive_short_inserts(c, sample)
-        if sample in merged:
-            c.attempt(sample, f'logs/lanes/{sample}.csv', read_lane_counts, out, sample)
         if mode == 'pe':
             c.attempt(sample, f'{logs}.fastp.json', read_fastp, out, sample)
         if map_log is not None:
-            collect_mapping(c, out, sample, map_log['tiers'])
+            collect_mapping(c, out, sample, map_log['tiers'], bool(config.get('passes')))
         c.attempt(sample, '*-mappingstats.csv', read_mappingstats, out, sample)
         c.attempt(sample, '*-classcounts.csv', read_classcounts, out, sample)
         derive_removed_by_policy(c, sample, config)
@@ -990,7 +1032,7 @@ def main():
     parser.add_argument('--version-file', help='VERSION file (default: docker/VERSION; the Snakefile passes '
                                                '<Snakefile folder>/VERSION)')
     args = parser.parse_args()
-    global DICTIONARY_FILE, VERSION_FILE        # inside the compiled Docker binary __file__ is not in the repository
+    global DICTIONARY_FILE, VERSION_FILE        # the Snakefile passes both folders explicitly
     if args.qc_dir:
         DICTIONARY_FILE = Path(args.qc_dir) / 'metrics.yaml'
     if args.version_file:

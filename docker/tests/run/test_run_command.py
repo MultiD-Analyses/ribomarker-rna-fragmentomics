@@ -154,7 +154,9 @@ def test_allowed_settings_are_taken(tmp_path):
 
 @pytest.mark.parametrize('values, word', [
     ({'dbdir': '/x'}, 'set by run'), ({'threads': 4}, 'set by run'), ({'paired_end': True}, 'set by run'),
-    ({'collapse': True}, 'multimapper'), ({'trim_fastq': False}, 'trimming'), ({'trim_only': True}, 'QC report'),
+    ({'collapse': True}, 'collapse: removed in release 0.4.0'), ({'trim_fastq': False}, 'trim_fastq: removed in release 0.4.0'),
+    ({'trim_only': True}, 'trim_only: removed in release 0.4.0'), ({'subsample_reads': 1000}, 'subsample_reads: removed'),
+    ({'dump_unmapped': True}, 'dump_unmapped: removed'), ({'collapse': 0}, 'collapse: removed'),   # 0 is not False
     ({'mapper': 'bowtie'}, 'not available under run'), ({'multimapp': 10}, 'not available under run'),
 ])
 def test_settings_run_cannot_use_are_refused(tmp_path, values, word):
@@ -206,7 +208,7 @@ def test_pipeline_config_uses_absolute_folders_and_the_bare_run_id(tmp_path):
                            title='RiboMarker run 2026-10-09')
     assert c['output_prefix'] == 'ribomarker' and c['input_dir'] == '/data/' and c['dbdir'] == '/refs/'
     assert c['samples'] == '/out/ribomarker/samples.csv' and c['paired_end'] is False
-    assert c['collapse'] is False and c['remove_multimap'] is True and c['multimap'] == 50
+    assert 'collapse' not in c and c['remove_multimap'] is True and c['multimap'] == 50   # collapse: removed in 0.4.0
     assert c['report_title'] == 'RiboMarker run 2026-10-09'
 
 
@@ -587,15 +589,54 @@ def test_replaced_tables_reach_the_pipeline_config(tmp_path):
     three_tiers(tmp_path / 'refs')
     tiers = tmp_path / 'my' / 'tiers.csv'
     tiers.parent.mkdir()
-    tiers.write_text('bowtie,univec/univec_bt1,T\nbowtie2,genome/human-genome,T\n')   # relative to refs
+    tiers.write_text('tier\nunivec_bt1\ngenome\n')     # an order file (0.4.0): trnas left out
     classes = tmp_path / 'my' / 'classes.tsv'
     classes.write_text(CODE_TABLE.read_text())
     p = rc.prepare(args(tmp_path, tiers=str(tiers), rna_classes=str(classes)))
     config = yaml.safe_load(p['config_text'])
     assert config['tiers'] == str(tiers.resolve()) and config['rna_classes'] == str(classes.resolve())
+    assert config['tiers_sha256'] == rc.refTables.sha256(tiers)      # a resume with an edited file is refused
     assert p['tables']['rna_classes']['replaced'] and p['tables']['tiers']['replaced']
-    # the built-in class table names tiers this two-tier list does not have (critique 2026-10-27)
+    # the built-in class table names tiers this two-tier order does not have (critique 2026-10-27)
     assert any('names tiers that the tier list does not have' in w and 'trnas' in w for w in p['warnings'])
+    assert any('leaves out trnas; not used in this run' in w for w in p['warnings'])
+    assert p['schedule'].startswith('Mapping schedule: 2 references, 1 pass; order: order file tiers.csv')
+
+
+def test_a_class_table_with_the_old_antisense_row_gives_a_warning(tmp_path):
+    """Release 0.4.0: antisense reads keep their class; the row antisense of a 0.3.0 table is not used."""
+    one_sample(tmp_path)
+    classes = tmp_path / 'classes.tsv'
+    classes.write_text(CODE_TABLE.read_text()
+                       + 'antisense\t*\tantisense\tantisense\tlncRNA and other ncRNA\t91\t10\tno\tyes\tno\told row\n')
+    p = rc.prepare(args(tmp_path, rna_classes=str(classes)))
+    assert any('has a row for antisense, which is not used' in w for w in p['warnings'])
+    assert not any('antisense' in w for w in rc.prepare(args(tmp_path))['warnings'])
+
+
+def test_a_resume_with_an_edited_order_file_is_refused(tmp_path):
+    one_sample(tmp_path)
+    three_tiers(tmp_path / 'refs')
+    order = tmp_path / 'order.tsv'
+    order.write_text('tier\nunivec_bt1\ntrnas\ngenome\n')
+    p = rc.prepare(args(tmp_path, tiers=str(order)))
+    p['run_dir'].mkdir(parents=True)
+    (p['run_dir'] / 'samples.csv').write_text(p['sheet_text'])
+    (p['run_dir'] / 'run_config.yaml').write_text(p['config_text'])
+    (p['run_dir'] / 'run_status.json').write_text('{"status": "interrupted"}')
+    assert rc.prepare(args(tmp_path, tiers=str(order)))['state'] == 'resume'
+    order.write_text('tier\nunivec_bt1\ngenome\n')                  # same path, other content
+    with pytest.raises(RunError, match='unfinished run of other samples or settings'):
+        rc.prepare(args(tmp_path, tiers=str(order)))
+
+
+def test_without_an_order_file_the_default_schedule_is_printed(tmp_path):
+    one_sample(tmp_path)
+    three_tiers(tmp_path / 'refs')
+    p = rc.prepare(args(tmp_path))
+    assert p['schedule'].split('\n')[0] == ('Mapping schedule: 3 references, 1 pass; order: default (references '
+                                             'folder); pass settings: none')
+    assert 'tiers_sha256' not in yaml.safe_load(p['config_text'])
 
 
 def test_the_option_wins_over_the_config_key(tmp_path):
@@ -614,8 +655,9 @@ def test_the_option_wins_over_the_config_key(tmp_path):
     ('rna_classes', None, 'file not found'),
     ('rna_classes', 'label\tclass\nrRNA\trRNA\n', 'RNA class table: .*columns'),
     ('tiers', None, 'file not found'),
-    ('tiers', 'bowtie2,genome/human-genome,T\nbowtie,univec/univec_bt1,T\n', 'must come first'),
-    ('tiers', 'bowtie2,genome/human-genome\n', 'map_cmd,index,retain'),
+    ('tiers', 'tier\ngenome\nunivec_bt1\n', 'must come first'),
+    ('tiers', 'tier\nunivec_bt1\nmirna\ngenome\n', 'mirna is not a reference of the references folder'),
+    ('tiers', 'bowtie,univec/univec_bt1,T\nbowtie2,genome/human-genome,T\n', 'tier list of release 0.3.0'),
 ])
 def test_unusable_tables_are_refused(tmp_path, kind, text, words):
     one_sample(tmp_path)
@@ -643,12 +685,23 @@ def test_keep_values_with_special_characters_are_refused(tmp_path, key, value):
 
 
 def test_old_class_names_in_keep_classes_give_a_warning(tmp_path):
-    """Old class names are accepted with a warning (plan, renaming); miRNA-star is part of miRNA since 0.3.0 (critique
+    """Old class names are accepted with a warning (renaming of 0.3.0); miRNA-star is part of miRNA since 0.3.0 (critique
     2026-10-27: before, it was translated silently)."""
     one_sample(tmp_path)
     p = rc.prepare(args(tmp_path, config=str(write_yaml(tmp_path / 's.yaml', {'keep_classes': 'miRNA-star,tRNA'}))))
     assert any('miRNA-star is a name before 0.3.0; the RNA class miRNA is kept' in w for w in p['warnings'])
     assert not any('tRNA is a name' in w for w in p['warnings'])
+
+
+def test_removed_keys_with_their_old_default_are_ignored_with_a_warning(tmp_path):
+    """Release 0.4.0: collapse: False, subsample_reads: 0, trim_fastq: True, trim_only: False, dump_unmapped: False are
+    accepted with a warning and not passed on to the pipeline (other values are refused, see above)."""
+    one_sample(tmp_path)
+    old = {'collapse': False, 'subsample_reads': 0, 'trim_fastq': True, 'trim_only': False, 'dump_unmapped': False}
+    p = rc.prepare(args(tmp_path, config=str(write_yaml(tmp_path / 's.yaml', dict(old, multimap=50)))))
+    config = yaml.safe_load(p['config_text'])
+    assert not set(old) & set(config) and config['multimap'] == 50
+    assert sorted(w.split(':')[1].strip() for w in p['warnings'] if 'obsolete since release 0.4.0' in w) == sorted(old)
 
 
 def test_keep_types_is_renamed_keep_classes_with_a_warning(tmp_path):

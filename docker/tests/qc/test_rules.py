@@ -8,7 +8,6 @@ import subprocess
 import sys
 
 import pytest
-import yaml
 
 import qcCollect
 from conftest import DICTIONARY, FIXTURES, REPO, prepare_run, run_collector, template_pattern, values
@@ -17,8 +16,12 @@ from conftest import DICTIONARY, FIXTURES, REPO, prepare_run, run_collector, tem
 NOT_PRODUCED = {
     'prov.reference_build': 'the fixture has no reference MANIFEST (expected warning)',
     'counts.rbc_mirna_ratio': 'the fixture has no miR-23a-3p reads, so the ratio is not evaluable (omitted)',
-    'trim.{lane}.pairs_in': 'only for merged lanes (test_lane_counts_are_collected)',
-    'trim.{lane}.reads_in': 'only for merged lanes (test_lane_counts_are_collected)',
+    # release 0.4.0: cell metrics exist only in runs with --passes (the fixtures are default runs; see
+    # test_parsers.py for a run with passes made from the fixture)
+    'map.p{pass}.{tier}.arrived': 'only with --passes',
+    'map.p{pass}.{tier}.aligned': 'only with --passes',
+    'map.p{pass}.{tier}.unaligned': 'only with --passes',
+    'map.p{pass}.{tier}.skipped_window': 'only with --passes',
 }
 
 
@@ -130,7 +133,7 @@ def test_damaged_input_gives_warning_and_omits_metrics(tmp_path, baselines, mode
 def test_rbc_mirna_ratio_is_a_plain_ratio(tmp_path, reads451, reads23a):
     """miR-451a / miR-23a-3p reads, without pseudocount; omitted when miR-23a-3p has no reads."""
     run, config_file = prepare_run(tmp_path, 'pe')
-    for name, rows in (('genecounts', [f'Hsa-Mir-451_5p,{reads451},0,0', f'Hsa-Mir-23-P3_3p,{reads23a},0,0']),
+    for name, rows in (('genecounts', [f'Hsa-Mir-451_5p,{reads451},0,0,0', f'Hsa-Mir-23-P3_3p,{reads23a},0,0,0']),   # S1-S4
                        ('genelengths', ['Hsa-Mir-451_5p,22.0,miRNA', 'Hsa-Mir-23-P3_3p,21.0,miRNA'])):
         table = next((run / 'results').glob(f'*-{name}.csv'))
         table.write_text(table.read_text() + '\n'.join(rows) + '\n')
@@ -244,15 +247,12 @@ def test_sample_without_reads_is_not_evaluable(tmp_path, baselines):
 
 
 @pytest.mark.parametrize('settings, sample, expected', [
-    ({'paired_end': True, 'collapse': True}, 'S1', ['config: collapse']),
-    ({'paired_end': True, 'collapse': False, 'subsample_reads': 1000}, 'S1', ['config: subsample_reads']),
     ({'paired_end': False}, 'S1_NEB', ['sample name']),
     ({'paired_end': True}, 'S1_SMART', ['sample name']),
     ({'paired_end': True}, 'S1_NEB', []),             # the NEB branch exists only in single-end trimming
-    ({'paired_end': True, 'collapse': False, 'subsample_reads': 0}, 'S1', []),
     ({'paired_end': True, 'species': 'mouse'}, 'S1', ['config: species']),
     ({'paired_end': True, 'species': 'human'}, 'S1', []),
-    ({'paired_end': True, 'remove_antisense': False}, 'S1', ['config: remove_antisense']),
+    ({'paired_end': True, 'remove_antisense': False}, 'S1', []),      # 0.4.0: the tagging gap is closed
     ({'paired_end': True, 'remove_multimap': False}, 'S1', []),
 ])
 def test_unsupported_settings_give_a_warning(settings, sample, expected):
@@ -260,22 +260,6 @@ def test_unsupported_settings_give_a_warning(settings, sample, expected):
     c = qcCollect.Collector({'metrics': []}, 'pe' if settings['paired_end'] else 'se', [sample])
     qcCollect.warn_unsupported(c, settings, [sample])
     assert [w['source'] for w in c.warnings] == expected
-
-
-@pytest.mark.parametrize('mode', ['pe', 'se'])
-def test_lane_counts_are_collected(tmp_path, mode):
-    run, config_file = prepare_run(tmp_path, mode)
-    lanes = tmp_path / 'lanes.csv'
-    lanes.write_text('sample,read,lane,file\nS1,R1,001,a\nS1,R1,002,b\n')
-    (run / 'logs' / 'lanes').mkdir(parents=True)
-    (run / 'logs' / 'lanes' / 'S1.csv').write_text('read,lane,reads\nR1,001,1000\nR1,002,82\nR2,001,1000\nR2,002,82\n')
-    config = yaml.safe_load(config_file.read_text())
-    config['lanes'] = str(lanes)
-    config_file.write_text(yaml.safe_dump(config))
-    found = values(run_collector(run, config_file))
-    unit = 'pairs' if mode == 'pe' else 'reads'
-    assert found[('S1', f'trim.L001.{unit}_in')] == 1000 and found[('S1', f'trim.L002.{unit}_in')] == 82
-    assert not any(metric_id.startswith('trim.L') for sample, metric_id in found if sample != 'S1')
 
 
 def test_result_tables_found_for_an_absolute_output_prefix(tmp_path):
@@ -289,3 +273,42 @@ def test_result_tables_found_for_an_absolute_output_prefix(tmp_path):
     report = run_collector(run, config_file)
     assert [w['source'] for w in report['warnings']] == ['<dbdir>/MANIFEST_human.json']
     assert 'assign.mapped' in {r['id'] for r in report['samples']['S1']['metrics']}
+
+
+# ----------------------------------------------------------------------------- release 0.4.0: removal split, C11
+# Level B pe sample S3 (a default run before the antisense change of 0.4.0), and the kept reads each flag state gives
+MAPPED, MULTI, ANTISENSE, ANTISENSE_MULTI = 152_000, 11_826, 1_565, 767
+
+
+@pytest.mark.parametrize('flags, removed_multimap, removed_antisense', [
+    ((True, True), MULTI, ANTISENSE),
+    ((True, False), MULTI, 0),
+    ((False, True), 0, ANTISENSE + ANTISENSE_MULTI),      # antisense multimappers are removed as antisense
+    ((False, False), 0, 0),
+])
+def test_removed_reads_split_by_the_flags_and_c11(flags, removed_multimap, removed_antisense):
+    import qcChecks
+    c = qcCollect.Collector(DICTIONARY, 'pe', ['S1'])
+    for metric_id, value in (('assign.mapped', MAPPED), ('assign.multi', MULTI), ('assign.antisense', ANTISENSE),
+                             ('assign.antisense_multi', ANTISENSE_MULTI),
+                             ('assign.kept', MAPPED - removed_multimap - removed_antisense)):
+        c.put('S1', metric_id, value)
+    qcCollect.derive_removed_by_policy(c, 'S1', {'remove_multimap': flags[0], 'remove_antisense': flags[1]})
+    assert (c.get('S1', 'assign.removed_multimap'), c.get('S1', 'assign.removed_antisense')) == \
+           (removed_multimap, removed_antisense)
+    values = {metric_id: record['value'] for metric_id, record in c.metrics['S1'].items()}
+    c11 = [x for x in qcChecks.sample_checks('S1', values, {}, 'pe', [], True, True, set()) if x['id'] == 'C11']
+    assert [x['status'] for x in c11] == ['equal']
+
+
+def test_runs_without_antisense_columns_get_no_split_and_c11_not_evaluable():
+    import qcChecks
+    c = qcCollect.Collector(DICTIONARY, 'pe', ['S1'])
+    for metric_id, value in (('assign.mapped', MAPPED), ('assign.multi', MULTI), ('assign.kept', MAPPED - MULTI)):
+        c.put('S1', metric_id, value)
+    qcCollect.derive_removed_by_policy(c, 'S1', {})
+    assert c.get('S1', 'assign.removed_by_policy') == MULTI
+    assert c.get('S1', 'assign.removed_multimap') is None and c.get('S1', 'assign.removed_antisense') is None
+    values = {metric_id: record['value'] for metric_id, record in c.metrics['S1'].items()}
+    c11 = [x for x in qcChecks.sample_checks('S1', values, {}, 'pe', [], True, True, set()) if x['id'] == 'C11']
+    assert [x['status'] for x in c11] == ['not evaluable']

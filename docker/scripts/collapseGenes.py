@@ -93,7 +93,7 @@ def main():
     glen = ft["length_nt"].reindex(kept.index) if "length_nt" in ft.columns else pd.Series(index=kept.index, dtype=float)
     meta = pd.DataFrame({"gene": kept["gene"].values, "length_nt": glen.values, "rna_class": kept_bt.values})
     gene_lengths = meta.groupby("gene").agg(length_nt=("length_nt", "max"), rna_class=("rna_class", "first"))
-    # gene-symbol columns of featureclasses (release 0.3.0, 3f): the first non-empty value of the gene's features
+    # gene-symbol columns of featureclasses (release 0.3.0): the first non-empty value of the gene's features
     for column in [c for c in ft.columns if c not in ("rna_class", "length_nt")]:
         values = pd.Series(ft[column].reindex(kept.index).fillna("").astype(str).values, index=kept["gene"].values)
         gene_lengths[column] = values[values != ""].groupby(level=0).first().reindex(gene_lengths.index).fillna("")

@@ -1,5 +1,5 @@
 """parseMappings.to_classes (release 0.3.0): the per-label tallies of a sample become per-class tallies; labels of
-one class are merged (needed from S3a on, when the miRNA star arm joins the class miRNA)."""
+one class are merged (needed since 0.3.0, when the miRNA star arm joins the class miRNA)."""
 import sys
 from pathlib import Path
 

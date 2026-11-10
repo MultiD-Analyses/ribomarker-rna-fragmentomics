@@ -7,6 +7,9 @@ bowtie2,mirna/human-mirna.fa,human-mirna
 bowtie2,mirna/human-star.fa,human-star
 bowtie2,mirna/human-pre.fa,human-pre
 bowtie2,pirna/human-pirna.fa,human-pirna
-bowtie2,gtf/human-ncrna.fa,human-ncrna
+bowtie2,gtf/human-ncrna_mt.fa,human-ncrna_mt
+bowtie2,gtf/human-ncrna_snsno.fa,human-ncrna_snsno
+bowtie2,gtf/human-ncrna_other.fa,human-ncrna_other
+bowtie2,gtf/human-ncrna_lnc.fa,human-ncrna_lnc
 bowtie2,gtf/human-cdna.fa,human-cdna
 bowtie2,genome/human-genome.fa,human-genome

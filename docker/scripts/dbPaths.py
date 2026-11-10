@@ -5,11 +5,10 @@
 them so since 2026-10-08), so a references folder can be moved or mounted anywhere. Absolute paths
 (older folders) are used as they are.
 
-Used by the Snakefile (which file to read) and by mapReads.py (the tiers).
+Used by the Snakefile (which file to read), mapSchedule.py and mapReads.py (where the indexes are).
 
-Since 0.3.0 a run can replace the tier list (starter --tiers, config key tiers). The replacement's relative index
-paths are resolved against the references folder (argument base), it may list only tiers of that folder, and
-check_tier_order() keeps UniVec and the spike-ins first and the genome last.
+Since 0.4.0 a run can change the order of the tiers with an order file (starter --tiers, config key tiers), which
+names the tiers by tier_id(); the order rules and the mapping schedule are in mapSchedule.py.
 """
 import os
 import subprocess
@@ -41,8 +40,7 @@ def find_dbpaths(dbdir, species, in_container=None):
 
 def read_dbpaths(path, base=None):
     """[(map_cmd, index, retain)] in mapping order, each index as an absolute path (a relative one is
-    joined with base, by default the folder of the dbpaths file; a replaced tier list passes the references
-    folder)."""
+    joined with base, by default the folder of the dbpaths file)."""
     folder = os.path.abspath(base) if base else os.path.dirname(os.path.abspath(path))
     tiers = []
     with open(path) as f:
@@ -54,32 +52,11 @@ def read_dbpaths(path, base=None):
     return tiers
 
 
-FIRST_TIERS = ('univec_bt1', 'ribospike')   # vector contaminants and spike-ins are removed first
-LAST_TIER = 'genome'                        # the genome catches what no annotated tier took
-
-
 def tier_id(index, species):
     """Tier id of an index path: its basename without the species prefix (genome/human-genome -> genome)."""
     name = os.path.basename(str(index).rstrip('/'))
     prefix = f'{species}-'
     return name[len(prefix):] if name.startswith(prefix) else name
-
-
-def check_tier_list(tiers, own_tiers, species):
-    """Problems of a replaced tier list (empty if none): tiers that the references folder does not have,
-    tiers given twice, and the order rule (UniVec and spike-ins first, the genome last).
-    tiers, own_tiers: [(map_cmd, index, retain)] as read_dbpaths returns them."""
-    ids = [tier_id(index, species) for _, index, _ in tiers]
-    own = {tier_id(index, species) for _, index, _ in own_tiers}
-    problems = [f'tier {t} is not a tier of the references folder (its tiers: {", ".join(sorted(own))})'
-                for t in ids if t not in own]
-    problems += [f'tier {t} is listed twice' for t in sorted({t for t in ids if ids.count(t) > 1})]
-    first = [t for t in ids if t in FIRST_TIERS]
-    if ids[:len(first)] != first:
-        problems.append(f'{" and ".join(first)} must come first (they remove vector and spike-in reads)')
-    if LAST_TIER in ids and ids[-1] != LAST_TIER:
-        problems.append(f'{LAST_TIER} must be the last tier')
-    return problems
 
 
 # map_cmd (mapReads.py) -> the tool that lists an index's sequence names
@@ -101,7 +78,7 @@ def contig_names(map_cmd, index):
 
 
 def write_contig_tiers(tiers, species, path):
-    """contig<TAB>tier for every reference sequence of every tier (release 0.3.0, 3g): which tier a read aligned
+    """contig<TAB>tier for every reference sequence of every tier (release 0.3.0): which tier a read aligned
     in, for reads without a feature (UniVec reads become the class UniVec). tiers: as read_dbpaths returns them."""
     with open(path, 'w') as f:
         f.write('contig\ttier\n')
